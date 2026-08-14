@@ -265,7 +265,7 @@ const SCOPES = [
 // Normalise so /index.html and / register as the same redirect URI in Spotify.
 const REDIRECT = location.origin + location.pathname.replace(/index\.html$/i, '');
 const IS_MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
-const BUILD = 'build 7';   // bump on every release so we can tell versions apart
+const BUILD = 'build 8';   // bump on every release so we can tell versions apart
 const COLORS = ['#ff2d95','#00e5ff','#ffd23f','#22e07a','#8b5cf6','#ff8a3d'];
 
 /* ---------- app state ---------- */
@@ -275,7 +275,7 @@ const S = {
   deck:[], idx:-1, live:false, livePlaylist:null,
   players:[], turn:0, rules:{...DEFAULT_RULES},
   revealed:false, playing:false,
-  pick:{tier:null, artist:false, song:false, album:false}, capNote:'',
+  pick:{tier:null, artist:false, song:false, album:false}, capNote:'', cued:false,
   deviceId:null, player:null, sdkFailed:false, connectDevices:[], connectDevice:null,
   yearCache:new Map(), busy:false
 };
@@ -817,13 +817,16 @@ async function liveAdvance(){
   } else {
     await api(`/me/player/next${q}`, {method:'POST'});
   }
+  // Cue it silently — the card should start quiet and wait for PLAY.
+  try{ await api(`/me/player/pause${q}`, {method:'PUT'}); }catch(e){}
+  S.playing = false;
 
   for(let i=0;i<14;i++){
     await sleep(550);
     let st = null;
     try{ st = await api('/me/player/currently-playing'); }catch(e){}
     const t = trackFromItem(st?.item);
-    if(t && t.id !== prev){ S.playing = st.is_playing !== false; return t; }
+    if(t && t.id !== prev){ S.playing = false; return t; }
   }
   return null;
 }
@@ -850,12 +853,30 @@ async function togglePlay(){
     else { await api('/me/player/play',{method:'PUT'}); S.playing=true; }
   }catch(e){}
 }
+/* The card sits silent until someone presses PLAY. */
+async function startOrToggle(){
+  try{
+    if(!S.cued){ await playTrack(S.deck[S.idx].uri); S.cued = true; S.playing = true; }
+    else await togglePlay();
+  }catch(e){
+    if(e.status===404 || /device/i.test(e.message||'')) return screenDevices('Lost contact with the player.');
+    return drawGame('Could not start that track.');
+  }
+  drawGame();
+}
+
 async function restartTrack(){
   try{
-    if(S.player) await S.player.seek(0);
-    else await api('/me/player/seek?position_ms=0',{method:'PUT'});
-    if(!S.playing) await togglePlay();
-  }catch(e){ try{ await playTrack(S.deck[S.idx].uri); }catch(_){} }
+    if(!S.cued){ await playTrack(S.deck[S.idx].uri); S.cued = true; S.playing = true; }
+    else{
+      if(S.player) await S.player.seek(0);
+      else await api('/me/player/seek?position_ms=0',{method:'PUT'});
+      if(!S.playing) await togglePlay();
+    }
+  }catch(e){
+    try{ await playTrack(S.deck[S.idx].uri); S.cued = true; S.playing = true; }catch(_){}
+  }
+  drawGame();
 }
 
 /* ---------- fallback: pick another Spotify Connect device ---------- */
@@ -1024,10 +1045,11 @@ async function nextSong(){
       if(!t){ S.busy = false; return drawGame('Spotify did not report a new song. Tap skip to try again.'); }
       S.deck.push(t);
       S.idx = S.deck.length - 1;
+      S.cued = true;               // already loaded in the player, sitting paused
     } else {
       S.idx++;
-      drawGame();
-      await playTrack(S.deck[S.idx].uri);
+      S.cued = false;              // nothing sent to the player yet — PLAY starts it
+      S.playing = false;
     }
   }catch(e){
     S.busy = false;
@@ -1059,7 +1081,8 @@ function drawGame(err){
     ${err?`<div class="err" style="margin:8px 0">${esc(err)}</div>`:''}
     <div class="stage">
       <p class="turnline">Card ${S.idx+1} · <b>${esc(p.name)}</b>'s turn</p>
-      <div class="disc spin">
+      ${!S.playing && !S.cued ? '<p class="small" style="text-align:center;margin:-8px 0 0">Press play when everyone is ready</p>' : ''}
+      <div class="disc${S.playing?' spin':''}">
         <div class="ring"></div><div class="ring r2"></div><div class="ring r3"></div>
         ${t.art?`<img class="art blur" src="${esc(t.art)}" alt="">`:`<div class="art"></div>`}
         <div class="hole"></div>
@@ -1070,21 +1093,24 @@ function drawGame(err){
       ${(S.idx===0 && S.capNote)?`<p class="note" style="text-align:center;max-width:330px;margin:0">${esc(S.capNote)}</p>`:''}
     </div>
     <div class="foot">
-      <div class="row" style="justify-content:center;gap:14px">
-        <button class="iconbtn" id="rw" title="Restart song"><svg viewBox="0 0 24 24"><path d="M12 5V2L7 6l5 4V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z"/></svg></button>
-        <button class="iconbtn" id="pp" title="Play / pause"><svg viewBox="0 0 24 24">${S.playing?'<path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/>':'<path d="M7 4l13 8-13 8z"/>'}</svg></button>
-        <button class="iconbtn" id="sk" title="Skip this song"><svg viewBox="0 0 24 24"><path d="M5 5l9 7-9 7zM16 5h3v14h-3z"/></svg></button>
-      </div>
+      <button class="btn ${S.playing?'btn-ghost':'btn-cy'}" id="pp">
+        <svg viewBox="0 0 24 24" style="width:21px;height:21px;fill:currentColor">
+          ${S.playing?'<path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/>':'<path d="M7 4l13 8-13 8z"/>'}
+        </svg>
+        ${S.playing ? 'Pause' : 'Play the song'}
+      </button>
       <button class="btn btn-primary" id="done">Done — reveal</button>
       <div class="pillrow">
-        <button class="btn btn-ghost btn-sm" id="dev">Change speaker</button>
+        <button class="btn btn-ghost btn-sm" id="rw">Start over</button>
+        <button class="btn btn-ghost btn-sm" id="sk">Skip song</button>
+        <button class="btn btn-ghost btn-sm" id="dev">Speaker</button>
         <button class="btn btn-ghost btn-sm" id="quit">End game</button>
       </div>
     </div>
   </div>`);
   v.querySelector('#done').onclick = doReveal;
   v.querySelector('#dev').onclick = () => screenDevices('Pick where the music should come out.');
-  v.querySelector('#pp').onclick = async () => { await togglePlay(); drawGame(err); };
+  v.querySelector('#pp').onclick = startOrToggle;
   v.querySelector('#rw').onclick = restartTrack;
   v.querySelector('#sk').onclick = nextSong;
   v.querySelector('#quit').onclick = () => screenEnd(false);
@@ -1094,6 +1120,7 @@ function drawGame(err){
 async function doReveal(){
   S.revealed = true;
   S.pick = {tier:null, artist:false, song:false, album:false};
+  pausePlayback();          // stop the music so the table can talk
   const t = S.deck[S.idx];
   drawReveal(S.yearCache.get(t.id) || null);
   if(!S.yearCache.has(t.id)){
@@ -1134,13 +1161,11 @@ function drawReveal(info){
         <button class="opt${pk.song?' on':''}" data-k="song">Named the song<span class="v">+${r.song}</span></button>
         <button class="opt${pk.album?' on':''}" data-k="album">Named the album<span class="v">+${r.album}</span></button>
       </div>
-      <button class="btn btn-good" id="add" ${pk.tier?'':'disabled'}>
-        ${pk.tier ? `<span class="tot">Add ${total} point${total===1?'':'s'}</span>` : 'Pick a year result'}
+      <button class="btn btn-good" id="add">
+        <span class="tot">Next turn${total ? ` · +${total}` : ''}</span>
+        <svg viewBox="0 0 24 24" style="width:19px;height:19px;fill:currentColor"><path d="M4 11h11.2l-4.6-4.6L12 5l7 7-7 7-1.4-1.4 4.6-4.6H4z"/></svg>
       </button>
-      <div class="row" style="justify-content:center;gap:14px;padding-top:2px">
-        <button class="iconbtn" id="rw" title="Play it again"><svg viewBox="0 0 24 24"><path d="M12 5V2L7 6l5 4V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z"/></svg></button>
-        <button class="iconbtn" id="pp" title="Play / pause"><svg viewBox="0 0 24 24">${S.playing?'<path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/>':'<path d="M7 4l13 8-13 8z"/>'}</svg></button>
-      </div>
+      <p class="small" style="text-align:center;margin:0">${total ? `${esc(p.name)} scores ${total}` : `Tap what ${esc(p.name)} got right, or go straight on for 0`}</p>
       <button class="btn btn-ghost btn-sm" id="quit" style="margin:0 auto">End game</button>
     </div>
   </div>`);
@@ -1153,8 +1178,6 @@ function drawReveal(info){
     drawReveal(info);
   });
   v.querySelector('#add').onclick = () => award(total);
-  v.querySelector('#pp').onclick = async () => { await togglePlay(); drawReveal(info); };
-  v.querySelector('#rw').onclick = restartTrack;
   v.querySelector('#quit').onclick = () => screenEnd(false);
   render(v);
 }
