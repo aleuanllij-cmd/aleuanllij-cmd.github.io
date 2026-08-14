@@ -265,7 +265,7 @@ const SCOPES = [
 // Normalise so /index.html and / register as the same redirect URI in Spotify.
 const REDIRECT = location.origin + location.pathname.replace(/index\.html$/i, '');
 const IS_MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
-const BUILD = 'build 9';   // bump on every release so we can tell versions apart
+const BUILD = 'build 10';   // bump on every release so we can tell versions apart
 const COLORS = ['#ff2d95','#00e5ff','#ffd23f','#22e07a','#8b5cf6','#ff8a3d'];
 
 /* ---------- app state ---------- */
@@ -394,7 +394,9 @@ async function api(path, opts={}, retry=true){
   if(r.status===429 && retry){ await sleep(((+r.headers.get('Retry-After')||2)+1)*1000); return api(path,opts,false); }
   if(r.status===204) return null;
   const txt = await r.text();
-  const body = txt ? JSON.parse(txt) : null;
+  // Several player endpoints answer 200 with a bare token rather than JSON.
+  let body = null;
+  if(txt){ try{ body = JSON.parse(txt); }catch(e){ body = {raw:txt}; } }
   if(!r.ok){
     const e = new Error(body?.error?.message || ('HTTP '+r.status));
     e.status = r.status; e.reason = body?.error?.reason; throw e;
