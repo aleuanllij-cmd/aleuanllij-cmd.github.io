@@ -274,7 +274,7 @@ const S = {
   deck:[], idx:-1,
   players:[], turn:0, rules:{...DEFAULT_RULES},
   revealed:false, playing:false,
-  pick:{tier:null, artist:false, song:false, album:false},
+  pick:{tier:null, artist:false, song:false, album:false}, capNote:'',
   deviceId:null, player:null, sdkFailed:false, connectDevices:[], connectDevice:null,
   yearCache:new Map(), busy:false
 };
@@ -627,38 +627,64 @@ function screenPlayers(){
 /* ============================================================
    DECK BUILDING
    ============================================================ */
+/* Spotify blocks GET /playlists/{id}/items — and the older /tracks — for
+   development-mode apps: 403 Forbidden, Premium or not. GET /playlists/{id}
+   still works and embeds the first page of the track list, so that's the way
+   in. Paging beyond it goes through the blocked path, hence a 100-song cap
+   per playlist. Plenty for a party game. */
+async function collectFrom(id, add){
+  const drain = async start => {
+    let url = start;
+    while(url){ const p = await api(url); (p.items||[]).forEach(add); url = p.next; }
+  };
+
+  if(id === '__liked__'){ await drain('/me/tracks?limit=50'); return {capped:false}; }
+
+  try{ await drain(`/playlists/${id}/items?limit=100&additional_types=track`); return {capped:false}; }
+  catch(e){ if(e.status !== 403 && e.status !== 404) throw e; }
+
+  try{ await drain(`/playlists/${id}/tracks?limit=100&additional_types=track`); return {capped:false}; }
+  catch(e){ if(e.status !== 403 && e.status !== 404) throw e; }
+
+  const pl = await api(`/playlists/${id}`);
+  const got = pl?.tracks?.items || [];
+  got.forEach(add);
+  let url = pl?.tracks?.next, capped = false;
+  while(url){
+    try{ const p = await api(url); (p.items||[]).forEach(add); url = p.next; }
+    catch(e){ capped = (pl?.tracks?.total || 0) > got.length; break; }
+  }
+  return {capped};
+}
+
 async function buildDeck(){
   const seen = new Set(), deck = [];
+  const add = it => {
+    const t = it?.track || (it?.type === 'track' ? it : null);
+    if(!t || t.type!=='track' || !t.uri || t.is_local || !t.id || seen.has(t.id)) return;
+    seen.add(t.id);
+    deck.push({
+      id:t.id, uri:t.uri, name:t.name,
+      artists:(t.artists||[]).map(a=>a.name),
+      album:t.album?.name || '',
+      art:t.album?.images?.[0]?.url || '',
+      spYear:parseInt((t.album?.release_date||'').slice(0,4),10) || null
+    });
+  };
+
+  let failed = 0, capped = false, lastErr = null;
   for(const id of S.chosen){
-    // Feb 2026: /playlists/{id}/tracks was replaced by /playlists/{id}/items.
-    // Try the new path first, fall back for older client IDs.
-    let url = id==='__liked__' ? '/me/tracks?limit=50' : `/playlists/${id}/items?limit=100&additional_types=track`;
-    while(url){
-      let page;
-      try{
-        page = await api(url);
-      }catch(err){
-        if((err.status===404 || err.status===403) && url.includes('/items?')){
-          url = url.replace('/items?', '/tracks?');
-          page = await api(url);
-        } else throw err;
-      }
-      for(const it of (page.items||[])){
-        const t = it?.track || (it?.type === 'track' ? it : null);
-        if(!t || t.type!=='track' || !t.uri || t.is_local || !t.id) continue;
-        if(seen.has(t.id)) continue;
-        seen.add(t.id);
-        deck.push({
-          id:t.id, uri:t.uri, name:t.name,
-          artists:(t.artists||[]).map(a=>a.name),
-          album:t.album?.name || '',
-          art:t.album?.images?.[0]?.url || '',
-          spYear:parseInt((t.album?.release_date||'').slice(0,4),10) || null
-        });
-      }
-      url = page.next;
-    }
+    try{ if((await collectFrom(id, add)).capped) capped = true; }
+    catch(e){ failed++; lastErr = e; }
   }
+  if(!deck.length) throw (lastErr || new Error('Those playlists came back empty.'));
+
+  S.capNote = failed
+    ? `${deck.length} songs loaded — ${failed} playlist${failed>1?'s':''} could not be read.`
+    : capped
+      ? `${deck.length} songs loaded. Spotify caps development apps at the first 100 songs of a playlist.`
+      : `${deck.length} songs loaded.`;
+
   // Fisher-Yates
   for(let i=deck.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [deck[i],deck[j]]=[deck[j],deck[i]]; }
   return deck;
@@ -867,7 +893,10 @@ async function screenApiReport(){
     line('Playlist items', await probe(`/playlists/${first}/items?limit=1`));
     line('Playlist items +param', await probe(`/playlists/${first}/items?limit=1&additional_types=track`));
     line('Playlist tracks (old path)', await probe(`/playlists/${first}/tracks?limit=1`));
-    line('Playlist details', await probe(`/playlists/${first}`));
+    const det = await probe(`/playlists/${first}`);
+    rows.push(['Songs inside details', det.ok
+      ? `${det.body?.tracks?.items?.length ?? 0} of ${det.body?.tracks?.total ?? '?'}`
+      : `${det.status} ${det.msg}`]);
   }
   if(S.chosen.has('__liked__')) line('Liked songs', await probe('/me/tracks?limit=1'));
   line('Playback devices', await probe('/me/player/devices'));
@@ -962,6 +991,7 @@ function drawGame(err){
       </div>
       <div class="eq${S.playing?'':' off'}"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
       <p class="small" style="text-align:center;max-width:320px">Listen, then say the year out loud.<br>Press DONE to reveal.</p>
+      ${(S.idx===0 && S.capNote)?`<p class="note" style="text-align:center;max-width:330px;margin:0">${esc(S.capNote)}</p>`:''}
     </div>
     <div class="foot">
       <div class="row" style="justify-content:center;gap:14px">
