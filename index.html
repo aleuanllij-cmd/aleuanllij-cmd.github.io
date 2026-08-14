@@ -265,7 +265,7 @@ const SCOPES = [
 // Normalise so /index.html and / register as the same redirect URI in Spotify.
 const REDIRECT = location.origin + location.pathname.replace(/index\.html$/i, '');
 const IS_MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
-const BUILD = 'build 8';   // bump on every release so we can tell versions apart
+const BUILD = 'build 9';   // bump on every release so we can tell versions apart
 const COLORS = ['#ff2d95','#00e5ff','#ffd23f','#22e07a','#8b5cf6','#ff8a3d'];
 
 /* ---------- app state ---------- */
@@ -386,7 +386,9 @@ function logout(){
 async function api(path, opts={}, retry=true){
   const t = await tok();
   const r = await fetchRetry(path.startsWith('http')?path:'https://api.spotify.com/v1'+path, {
-    ...opts, headers:{ Authorization:'Bearer '+t, 'Content-Type':'application/json', ...(opts.headers||{}) }
+    ...opts,
+    cache:'no-store',   // "what's playing now" must never come from the browser cache
+    headers:{ Authorization:'Bearer '+t, 'Content-Type':'application/json', ...(opts.headers||{}) }
   });
   if(r.status===401 && retry){ await refreshToken(); return api(path,opts,false); }
   if(r.status===429 && retry){ await sleep(((+r.headers.get('Retry-After')||2)+1)*1000); return api(path,opts,false); }
@@ -804,31 +806,68 @@ function trackFromItem(it){
   };
 }
 
-async function liveAdvance(){
+/* Every player command carries the device id, and if Spotify has let the
+   device go idle we re-attach and try once more. Pausing between cards is
+   exactly what makes a device go idle, so this happens a lot. */
+async function transferToDevice(){
   const dev = S.deviceId || S.connectDevice;
-  const q = dev ? '?device_id=' + encodeURIComponent(dev) : '';
+  if(!dev) return false;
+  try{
+    await api('/me/player', {method:'PUT', body: JSON.stringify({device_ids:[dev], play:false})});
+    await sleep(700);
+    return true;
+  }catch(e){ return false; }
+}
+
+async function playerCall(path, opts){
+  const dev = S.deviceId || S.connectDevice;
+  const q = dev ? (path.includes('?') ? '&' : '?') + 'device_id=' + encodeURIComponent(dev) : '';
+  try{ return await api(path + q, opts); }
+  catch(e){
+    const idle = e.status === 404 || /device/i.test(e.reason || e.message || '');
+    if(idle && await transferToDevice()) return await api(path + q, opts);
+    throw e;
+  }
+}
+
+async function nowPlaying(){
+  let st = null;
+  try{ st = await api('/me/player'); }catch(e){}
+  if(!st || !st.item){ try{ st = await api('/me/player/currently-playing'); }catch(e){} }
+  return { track: trackFromItem(st?.item), playing: !!(st && st.is_playing) };
+}
+
+async function liveAdvance(){
   const prev = S.deck[S.idx]?.id || null;
 
   if(S.idx < 0){
-    try{ await api(`/me/player/shuffle?state=true${dev ? '&device_id='+encodeURIComponent(dev) : ''}`, {method:'PUT'}); }catch(e){}
-    await api(`/me/player/play${q}`, {
+    try{ await playerCall('/me/player/shuffle?state=true', {method:'PUT'}); }catch(e){}
+    await playerCall('/me/player/play', {
       method:'PUT', body: JSON.stringify({ context_uri: `spotify:playlist:${S.livePlaylist}` })
     });
   } else {
-    await api(`/me/player/next${q}`, {method:'POST'});
+    await playerCall('/me/player/next', {method:'POST'});
   }
-  // Cue it silently — the card should start quiet and wait for PLAY.
-  try{ await api(`/me/player/pause${q}`, {method:'PUT'}); }catch(e){}
-  S.playing = false;
 
-  for(let i=0;i<14;i++){
-    await sleep(550);
-    let st = null;
-    try{ st = await api('/me/player/currently-playing'); }catch(e){}
-    const t = trackFromItem(st?.item);
-    if(t && t.id !== prev){ S.playing = false; return t; }
+  // Wait until Spotify has genuinely moved to a different track. Pausing
+  // before the switch lands is what let songs start on their own.
+  let found = null;
+  for(let i=0;i<16;i++){
+    await sleep(500);
+    const {track} = await nowPlaying();
+    if(track && track.id !== prev){ found = track; break; }
   }
-  return null;
+  if(!found) return null;
+
+  // Now silence it, and confirm it actually stopped.
+  for(let i=0;i<3;i++){
+    try{ await playerCall('/me/player/pause', {method:'PUT'}); }catch(e){}
+    await sleep(400);
+    if(!(await nowPlaying()).playing) break;
+  }
+  try{ await playerCall('/me/player/seek?position_ms=0', {method:'PUT'}); }catch(e){}
+  S.playing = false;
+  return found;
 }
 
 async function playTrack(uri){
@@ -842,15 +881,15 @@ async function playTrack(uri){
 async function pausePlayback(){
   try{
     if(S.player) await S.player.pause();
-    else await api('/me/player/pause',{method:'PUT'});
+    else await playerCall('/me/player/pause',{method:'PUT'});
   }catch(e){}
   S.playing = false;
 }
 async function togglePlay(){
   try{
     if(S.player){ await S.player.togglePlay(); S.playing = !S.playing; }
-    else if(S.playing){ await api('/me/player/pause',{method:'PUT'}); S.playing=false; }
-    else { await api('/me/player/play',{method:'PUT'}); S.playing=true; }
+    else if(S.playing){ await playerCall('/me/player/pause',{method:'PUT'}); S.playing=false; }
+    else { await playerCall('/me/player/play',{method:'PUT'}); S.playing=true; }
   }catch(e){}
 }
 /* The card sits silent until someone presses PLAY. */
@@ -1042,7 +1081,7 @@ async function nextSong(){
     if(S.live){
       if(S.idx >= 0) screenLoading('Cueing the next song');
       const t = await liveAdvance();
-      if(!t){ S.busy = false; return drawGame('Spotify did not report a new song. Tap skip to try again.'); }
+      if(!t){ S.busy = false; return screenStuck('Spotify never switched to a new song.'); }
       S.deck.push(t);
       S.idx = S.deck.length - 1;
       S.cued = true;               // already loaded in the player, sitting paused
@@ -1055,7 +1094,7 @@ async function nextSong(){
     S.busy = false;
     if(e.status===404 || /device/i.test(e.message||'')) return screenDevices('Lost contact with the player.');
     if(e.reason==='PREMIUM_REQUIRED') return screenDevices('That account needs Spotify Premium for in-browser playback.');
-    if(S.live && S.idx < 0) return screenDevices('Could not start that playlist. Pick where to play it.');
+    if(S.live) return screenStuck(e.message || 'Spotify refused the command.');
     drawGame('Could not start that track. Try skip.');
     return;
   }
@@ -1073,9 +1112,29 @@ function scoreStrip(){
   ).join('')}</div>`;
 }
 
+function screenStuck(msg){
+  const v = el(`<div class="wrap center">
+    <div class="card stack">
+      <div>
+        <h2>Nothing is cued</h2>
+        <p class="sub" style="margin:2px 0 0">${esc(msg || 'Spotify did not report a song.')}</p>
+      </div>
+      <div class="err">Open the Spotify app, press play on anything for a second, then come back and try again.</div>
+      <button class="btn btn-cy" id="retry">Try again</button>
+      <button class="btn btn-ghost" id="dev">Choose a different speaker</button>
+      <button class="btn btn-ghost btn-sm" id="back" style="margin:0 auto">Back to playlists</button>
+    </div>
+  </div>`);
+  v.querySelector('#retry').onclick = () => { S.busy = false; nextSong(); };
+  v.querySelector('#dev').onclick = () => screenDevices('Pick where the music should come out.');
+  v.querySelector('#back').onclick = () => { S.deck=[]; S.idx=-1; S.live=false; screenPlaylists(); };
+  render(v);
+}
+
 function drawGame(err){
   const t = S.deck[S.idx];
   const p = S.players[S.turn];
+  if(!t) return screenStuck(err);
   const v = el(`<div class="wrap">
     ${scoreStrip()}
     ${err?`<div class="err" style="margin:8px 0">${esc(err)}</div>`:''}
