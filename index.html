@@ -1,0 +1,1092 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#07060f">
+<title>TIMELINE</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#07060f;
+  --ink:#f4f2ff;
+  --muted:#9a95c0;
+  --mag:#ff2d95;
+  --cy:#00e5ff;
+  --yel:#ffd23f;
+  --vio:#8b5cf6;
+  --card:rgba(255,255,255,.045);
+  --line:rgba(255,255,255,.10);
+  --display:'Archivo Black','Space Grotesk',system-ui,sans-serif;
+  --body:'Space Grotesk',system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{
+  margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);
+  overflow-x:hidden;
+  background-image:
+    radial-gradient(60vw 60vw at 12% 8%, rgba(255,45,149,.20), transparent 60%),
+    radial-gradient(55vw 55vw at 92% 22%, rgba(0,229,255,.15), transparent 60%),
+    radial-gradient(70vw 70vw at 50% 108%, rgba(139,92,246,.20), transparent 60%);
+  background-attachment:fixed;
+}
+body::after{
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.35;
+  background-image:radial-gradient(rgba(255,255,255,.05) 1px, transparent 1px);
+  background-size:3px 3px;
+}
+#app{position:relative;z-index:1;min-height:100%;display:flex;flex-direction:column}
+.wrap{width:100%;max-width:760px;margin:0 auto;padding:22px 18px 40px;flex:1;display:flex;flex-direction:column}
+.center{justify-content:center}
+
+/* ---------- type ---------- */
+h1.logo{
+  font-family:var(--display);font-size:clamp(38px,11vw,74px);line-height:.92;margin:0;
+  letter-spacing:-.03em;text-transform:uppercase;
+  background:linear-gradient(100deg,var(--mag),var(--vio) 45%,var(--cy));
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+  filter:drop-shadow(0 0 26px rgba(255,45,149,.35));
+}
+.tag{color:var(--muted);letter-spacing:.34em;text-transform:uppercase;font-size:11px;margin:12px 0 0;font-weight:700}
+h2{font-family:var(--display);text-transform:uppercase;letter-spacing:-.01em;font-size:clamp(20px,5.2vw,28px);margin:0 0 4px}
+.sub{color:var(--muted);font-size:14px;line-height:1.55;margin:0 0 20px}
+.small{font-size:12.5px;color:var(--muted);line-height:1.6}
+
+/* ---------- surfaces ---------- */
+.card{
+  background:var(--card);border:1px solid var(--line);border-radius:20px;padding:18px;
+  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+}
+.stack{display:flex;flex-direction:column;gap:12px}
+.row{display:flex;gap:10px;align-items:center}
+.spread{display:flex;gap:10px;align-items:center;justify-content:space-between}
+.grow{flex:1;min-width:0}
+
+/* ---------- controls ---------- */
+button{font-family:var(--body);cursor:pointer;border:0;background:none;color:inherit}
+.btn{
+  display:flex;align-items:center;justify-content:center;gap:9px;
+  width:100%;padding:17px 20px;border-radius:16px;font-size:16px;font-weight:700;
+  letter-spacing:.06em;text-transform:uppercase;transition:transform .12s ease, filter .2s ease, opacity .2s;
+  border:1px solid transparent;
+}
+.btn:active{transform:scale(.975)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn-primary{background:linear-gradient(100deg,var(--mag),var(--vio));color:#fff;box-shadow:0 10px 34px -10px rgba(255,45,149,.75)}
+.btn-cy{background:linear-gradient(100deg,var(--cy),#4f8dff);color:#04121a;box-shadow:0 10px 34px -10px rgba(0,229,255,.6)}
+.btn-ghost{background:rgba(255,255,255,.05);border-color:var(--line);color:var(--ink)}
+.btn-good{background:linear-gradient(100deg,#22e07a,#12b981);color:#04140c;box-shadow:0 10px 30px -12px rgba(34,224,122,.7)}
+.btn-bad{background:rgba(255,255,255,.05);border-color:rgba(255,90,120,.45);color:#ff8098}
+.btn-sm{padding:12px 15px;font-size:12.5px;border-radius:13px;width:auto}
+.iconbtn{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;background:rgba(255,255,255,.06);border:1px solid var(--line);flex:none}
+.iconbtn:active{transform:scale(.93)}
+.iconbtn svg{width:22px;height:22px;fill:var(--ink)}
+
+input[type=text],input[type=number]{
+  width:100%;padding:15px 16px;border-radius:14px;background:rgba(0,0,0,.35);
+  border:1px solid var(--line);color:var(--ink);font-size:16px;font-family:var(--body);outline:none;
+}
+input:focus{border-color:var(--mag);box-shadow:0 0 0 3px rgba(255,45,149,.16)}
+label.lbl{font-size:11px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:8px}
+
+.code{
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;word-break:break-all;
+  background:rgba(0,0,0,.42);border:1px dashed rgba(0,229,255,.4);color:var(--cy);
+  padding:12px 13px;border-radius:12px;line-height:1.5;
+}
+
+/* ---------- lists ---------- */
+.list{display:flex;flex-direction:column;gap:9px;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.pl{
+  display:flex;gap:13px;align-items:center;padding:9px;border-radius:15px;text-align:left;width:100%;
+  background:rgba(255,255,255,.035);border:1px solid var(--line);transition:.15s;
+}
+.pl:active{transform:scale(.99)}
+.pl.on{background:rgba(255,45,149,.14);border-color:rgba(255,45,149,.6)}
+.pl img,.pl .ph{width:52px;height:52px;border-radius:10px;object-fit:cover;flex:none;background:linear-gradient(135deg,var(--vio),var(--cy))}
+.pl .nm{font-weight:700;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pl .ct{font-size:12px;color:var(--muted);margin-top:2px}
+.tick{width:26px;height:26px;border-radius:50%;border:2px solid var(--line);flex:none;display:grid;place-items:center;font-size:14px;color:#fff}
+.pl.on .tick{background:var(--mag);border-color:var(--mag)}
+
+/* ---------- players ---------- */
+.pchip{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:14px;background:rgba(255,255,255,.04);border:1px solid var(--line)}
+.dot{width:12px;height:12px;border-radius:50%;flex:none;box-shadow:0 0 12px currentColor}
+.scorebar{display:flex;gap:7px;overflow-x:auto;padding:4px 0 8px;scrollbar-width:none}
+.scorebar::-webkit-scrollbar{display:none}
+.sc{
+  flex:none;display:flex;align-items:center;gap:8px;padding:8px 13px;border-radius:99px;
+  background:rgba(255,255,255,.05);border:1px solid var(--line);font-size:13px;font-weight:700;
+}
+.sc.turn{border-color:var(--yel);background:rgba(255,210,63,.14);box-shadow:0 0 22px -6px rgba(255,210,63,.6)}
+.sc .pts{font-family:var(--display);font-size:15px}
+
+/* ---------- game ---------- */
+.stage{flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:22px;padding:8px 0}
+.turnline{font-size:12px;letter-spacing:.28em;text-transform:uppercase;color:var(--muted);font-weight:700;text-align:center}
+.turnline b{color:var(--yel);letter-spacing:.1em}
+
+.disc{position:relative;width:min(66vw,250px);aspect-ratio:1;display:grid;place-items:center;flex:none}
+.disc .ring{position:absolute;inset:0;border-radius:50%;border:2px solid rgba(255,255,255,.14)}
+.disc .ring.r2{inset:-16px;border-color:rgba(255,45,149,.35);animation:pulse 2.6s ease-out infinite}
+.disc .ring.r3{inset:-16px;border-color:rgba(0,229,255,.3);animation:pulse 2.6s ease-out infinite 1.3s}
+@keyframes pulse{0%{transform:scale(.9);opacity:.9}100%{transform:scale(1.28);opacity:0}}
+.disc .art{
+  width:100%;height:100%;border-radius:50%;object-fit:cover;
+  background:conic-gradient(from 0deg,#2a1b4d,#4b2a6b,#1b3350,#2a1b4d);
+  box-shadow:0 24px 70px -20px rgba(0,0,0,.9), inset 0 0 60px rgba(0,0,0,.5);
+}
+.disc .art.blur{filter:blur(26px) saturate(1.5) brightness(.8);transform:scale(.98)}
+.disc.spin .art{animation:spin 9s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.disc .hole{position:absolute;width:19%;aspect-ratio:1;border-radius:50%;background:var(--bg);border:1px solid rgba(255,255,255,.18)}
+.qmark{position:absolute;font-family:var(--display);font-size:clamp(52px,17vw,96px);color:#fff;text-shadow:0 0 40px rgba(255,45,149,.9);opacity:.95}
+
+.eq{display:flex;gap:5px;align-items:flex-end;height:30px}
+.eq i{width:5px;background:linear-gradient(180deg,var(--cy),var(--mag));border-radius:3px;animation:bar .9s ease-in-out infinite;display:block;height:30%}
+.eq i:nth-child(2){animation-delay:.12s}.eq i:nth-child(3){animation-delay:.26s}
+.eq i:nth-child(4){animation-delay:.06s}.eq i:nth-child(5){animation-delay:.34s}
+.eq i:nth-child(6){animation-delay:.18s}.eq i:nth-child(7){animation-delay:.42s}
+@keyframes bar{0%,100%{height:22%}50%{height:100%}}
+.eq.off i{animation-play-state:paused;height:22%}
+
+.reveal{text-align:center;animation:rise .45s cubic-bezier(.2,.9,.3,1.2)}
+@keyframes rise{from{opacity:0;transform:translateY(18px) scale(.96)}to{opacity:1;transform:none}}
+.year{
+  font-family:var(--display);font-size:clamp(60px,20vw,120px);line-height:.88;letter-spacing:-.04em;
+  background:linear-gradient(100deg,var(--yel),var(--mag) 70%);
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+  filter:drop-shadow(0 0 32px rgba(255,210,63,.35));
+}
+.title{font-size:clamp(19px,5.2vw,26px);font-weight:700;margin-top:10px;line-height:1.25}
+.artist{font-size:clamp(15px,4vw,18px);color:var(--cy);margin-top:6px;font-weight:500}
+.album{font-size:13px;color:var(--muted);margin-top:8px}
+.note{font-size:11px;color:var(--muted);margin-top:12px;opacity:.8}
+.covershot{width:min(46vw,168px);aspect-ratio:1;border-radius:16px;object-fit:cover;box-shadow:0 22px 60px -22px rgba(0,0,0,.95);margin-bottom:14px}
+
+.foot{display:flex;flex-direction:column;gap:11px;padding-top:12px}
+.pillrow{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+
+.err{background:rgba(255,60,90,.12);border:1px solid rgba(255,60,90,.4);color:#ffb3c0;padding:13px 15px;border-radius:14px;font-size:13.5px;line-height:1.55}
+.ok{background:rgba(34,224,122,.1);border:1px solid rgba(34,224,122,.35);color:#8df5be;padding:13px 15px;border-radius:14px;font-size:13.5px;line-height:1.55}
+.hide{display:none!important}
+.spinner{width:34px;height:34px;border-radius:50%;border:3px solid rgba(255,255,255,.14);border-top-color:var(--mag);animation:spin .8s linear infinite;margin:0 auto}
+.steps{counter-reset:s;padding:0;margin:0;list-style:none;display:flex;flex-direction:column;gap:13px}
+.steps li{counter-increment:s;position:relative;padding-left:38px;font-size:13.5px;line-height:1.6;color:#cfcae8}
+.steps li::before{
+  content:counter(s);position:absolute;left:0;top:-1px;width:26px;height:26px;border-radius:50%;
+  display:grid;place-items:center;font-size:12px;font-weight:700;
+  background:linear-gradient(100deg,var(--mag),var(--vio));color:#fff;
+}
+a{color:var(--cy)}
+.winner{text-align:center}
+.crown{font-size:64px;line-height:1}
+
+/* ---------- scoring panel ---------- */
+.opts{display:grid;gap:8px}
+.opts3{grid-template-columns:repeat(3,1fr)}
+.opt{
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+  padding:14px 15px;border-radius:14px;background:rgba(255,255,255,.05);
+  border:1px solid var(--line);font-weight:700;font-size:14px;text-align:left;transition:.14s;
+}
+.opt .v{font-family:var(--display);font-size:15px;color:var(--muted);white-space:nowrap}
+.opt:active{transform:scale(.985)}
+.opt.on{background:rgba(34,224,122,.17);border-color:rgba(34,224,122,.75)}
+.opt.on .v{color:#8df5be}
+.opt.on.zero{background:rgba(255,90,120,.15);border-color:rgba(255,90,120,.6)}
+.opt.on.zero .v{color:#ff8098}
+.opt.mini{flex-direction:column;gap:3px;padding:13px 6px;text-align:center;font-size:12.5px;line-height:1.25}
+.opt.mini .v{font-size:14px}
+.tot{font-family:var(--display);font-size:15px;letter-spacing:.02em}
+.setrow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.07)}
+.setrow:last-child{border-bottom:0}
+.setrow .k{font-size:13.5px;font-weight:700}
+.setrow .k small{display:block;font-weight:400;font-size:11px;color:var(--muted);margin-top:2px}
+.stepper{display:flex;align-items:center;gap:8px;flex:none}
+.stepper button{width:34px;height:34px;border-radius:10px;background:rgba(255,255,255,.07);border:1px solid var(--line);font-size:17px;font-weight:700;display:grid;place-items:center;line-height:1}
+.stepper button:active{transform:scale(.9)}
+.stepper .n{min-width:40px;text-align:center;font-family:var(--display);font-size:16px}
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+/* ============================================================
+   TIMELINE — a guess-the-year music party game
+   Single-file web app. Spotify PKCE auth + Web Playback SDK.
+   ============================================================ */
+
+/* ---------- tiny helpers ---------- */
+const $ = (s, r=document) => r.querySelector(s);
+const el = (h) => { const t=document.createElement('template'); t.innerHTML=h.trim(); return t.content.firstElementChild; };
+const esc = (s='') => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const sleep = ms => new Promise(r=>setTimeout(r,ms));
+const APP = $('#app');
+
+// storage that degrades to memory if localStorage is unavailable
+const _mem = {};
+const store = {
+  get(k){ try{ const v=localStorage.getItem(k); return v===null?(_mem[k]??null):v; }catch(e){ return _mem[k]??null; } },
+  set(k,v){ _mem[k]=v; try{ localStorage.setItem(k,v); }catch(e){} },
+  del(k){ delete _mem[k]; try{ localStorage.removeItem(k); }catch(e){} }
+};
+
+const K = { CID:'tl.clientId', VER:'tl.verifier', TOK:'tl.token', REF:'tl.refresh', EXP:'tl.expires', PLAYERS:'tl.players', RULES:'tl.rules' };
+
+/* Scoring. Every value is editable on the players screen. */
+const DEFAULT_RULES = {
+  exact:   10,  // called the year bang on
+  gap:      6,  // landed in the right gap on their own timeline
+  artist:   3,
+  song:     2,
+  album:    1,
+  target:  50   // points needed to win
+};
+const RULE_ROWS = [
+  ['exact',   'Exact year',      'Called the year bang on',            1, 50],
+  ['gap',     'Correct gap',     'Placed it in the right gap',         0, 50],
+  ['artist',  'Artist',          'Named the artist',                   0, 25],
+  ['song',    'Song title',      'Named the song',                     0, 25],
+  ['album',   'Album',           'Named the album',                    0, 25],
+  ['target',  'Points to win',   'First player to reach this',         5, 300]
+];
+
+const SCOPES = [
+  'streaming','user-read-email','user-read-private',
+  'user-read-playback-state','user-modify-playback-state',
+  'playlist-read-private','playlist-read-collaborative','user-library-read'
+].join(' ');
+
+// Normalise so /index.html and / register as the same redirect URI in Spotify.
+const REDIRECT = location.origin + location.pathname.replace(/index\.html$/i, '');
+const IS_MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+const COLORS = ['#ff2d95','#00e5ff','#ffd23f','#22e07a','#8b5cf6','#ff8a3d'];
+
+/* ---------- app state ---------- */
+const S = {
+  token:null, refresh:null, expires:0, me:null,
+  playlists:[], chosen:new Set(),
+  deck:[], idx:-1,
+  players:[], turn:0, rules:{...DEFAULT_RULES},
+  revealed:false, playing:false,
+  pick:{tier:null, artist:false, song:false, album:false},
+  deviceId:null, player:null, sdkFailed:false, connectDevices:[], connectDevice:null,
+  yearCache:new Map(), busy:false
+};
+
+/* ============================================================
+   PKCE AUTH
+   ============================================================ */
+function randStr(n){
+  const a = new Uint8Array(n); crypto.getRandomValues(a);
+  const cs='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
+  return Array.from(a, x => cs[x % cs.length]).join('');
+}
+async function challenge(v){
+  const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(v));
+  return btoa(String.fromCharCode(...new Uint8Array(d))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+}
+async function beginLogin(){
+  const cid = store.get(K.CID);
+  if(!cid) return screenSetup('Add your Client ID first.');
+  const v = randStr(72);
+  store.set(K.VER, v);
+  const p = new URLSearchParams({
+    client_id: cid, response_type:'code', redirect_uri: REDIRECT,
+    code_challenge_method:'S256', code_challenge: await challenge(v),
+    scope: SCOPES, show_dialog:'false'
+  });
+  location.href = 'https://accounts.spotify.com/authorize?' + p.toString();
+}
+/* Some hosts (free Neocities, for one) send a Content-Security-Policy that
+   forbids the page from talking to any other domain. Catch that explicitly —
+   it looks identical to "no internet" otherwise. */
+let cspBlocked = null;
+document.addEventListener('securitypolicyviolation', e => {
+  if(/connect-src/i.test(e.violatedDirective || '')) cspBlocked = e.blockedURI || 'external requests';
+});
+
+/* fetch that survives a flaky mobile connection */
+async function fetchRetry(url, opts, tries=3){
+  let last;
+  for(let i=0;i<tries;i++){
+    try{ return await fetch(url, opts); }
+    catch(e){ last = e; if(i < tries-1) await sleep(700*(i+1)); }
+  }
+  const err = new Error('NETWORK');
+  err.network = true; err.detail = String(last && last.message || last);
+  throw err;
+}
+
+/* Distinguish "phone couldn't reach Spotify" from "Spotify refused the browser".
+   A no-cors request succeeds opaquely even when CORS blocks the real one, so if
+   this works the network is fine and the problem is CORS. */
+async function diagnoseNetwork(){
+  if(cspBlocked) return 'This web host blocks the page from contacting other sites (Content-Security-Policy: connect-src). Free Neocities accounts do exactly this, and it cannot be turned off. Move the file to a host without that restriction — GitHub Pages works.';
+  if(navigator.onLine === false) return 'You appear to be offline. Reconnect and tap Connect Spotify again.';
+  try{
+    await fetch('https://accounts.spotify.com/api/token', {
+      method:'POST', mode:'no-cors',
+      headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body:new URLSearchParams({grant_type:'probe'})
+    });
+    return 'Spotify’s server is reachable, but it refused the request from this page (CORS). Tell Claude you got “reachable, CORS refused”.';
+  }catch(e){
+    return 'Your phone could not reach accounts.spotify.com at all — usually a dropped mobile signal, a VPN, or a blocker. Try Wi-Fi, then tap Connect Spotify again.';
+  }
+}
+
+async function exchangeCode(code){
+  const cid = store.get(K.CID), v = store.get(K.VER);
+  const r = await fetchRetry('https://accounts.spotify.com/api/token',{
+    method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'},
+    body:new URLSearchParams({
+      grant_type:'authorization_code', code, redirect_uri:REDIRECT,
+      client_id:cid, code_verifier:v||''
+    })
+  });
+  const j = await r.json();
+  if(!r.ok) throw new Error(j.error_description || j.error || 'Token exchange failed');
+  saveTokens(j);
+}
+function saveTokens(j){
+  S.token = j.access_token; S.expires = Date.now() + (j.expires_in-60)*1000;
+  if(j.refresh_token){ S.refresh = j.refresh_token; store.set(K.REF, j.refresh_token); }
+  store.set(K.TOK, S.token); store.set(K.EXP, String(S.expires));
+}
+async function refreshToken(){
+  const cid = store.get(K.CID), rt = S.refresh || store.get(K.REF);
+  if(!rt) throw new Error('no refresh token');
+  const r = await fetchRetry('https://accounts.spotify.com/api/token',{
+    method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'},
+    body:new URLSearchParams({grant_type:'refresh_token', refresh_token:rt, client_id:cid})
+  });
+  const j = await r.json();
+  if(!r.ok) throw new Error('refresh failed');
+  saveTokens(j); return S.token;
+}
+async function tok(){
+  if(S.token && Date.now() < S.expires) return S.token;
+  return refreshToken();
+}
+function logout(){
+  [K.TOK,K.REF,K.EXP,K.VER].forEach(store.del);
+  S.token=S.refresh=null; S.expires=0;
+  if(S.player){ try{S.player.disconnect()}catch(e){} S.player=null; }
+  location.href = REDIRECT;
+}
+
+/* ---------- spotify api ---------- */
+async function api(path, opts={}, retry=true){
+  const t = await tok();
+  const r = await fetchRetry(path.startsWith('http')?path:'https://api.spotify.com/v1'+path, {
+    ...opts, headers:{ Authorization:'Bearer '+t, 'Content-Type':'application/json', ...(opts.headers||{}) }
+  });
+  if(r.status===401 && retry){ await refreshToken(); return api(path,opts,false); }
+  if(r.status===429 && retry){ await sleep(((+r.headers.get('Retry-After')||2)+1)*1000); return api(path,opts,false); }
+  if(r.status===204) return null;
+  const txt = await r.text();
+  const body = txt ? JSON.parse(txt) : null;
+  if(!r.ok){
+    const e = new Error(body?.error?.message || ('HTTP '+r.status));
+    e.status = r.status; e.reason = body?.error?.reason; throw e;
+  }
+  return body;
+}
+
+/* ============================================================
+   SCREENS
+   ============================================================ */
+function render(node){ APP.innerHTML=''; APP.appendChild(node); window.scrollTo(0,0); }
+
+/* ---------- 1. setup: client id ---------- */
+function screenSetup(msg){
+  const cid = store.get(K.CID) || '';
+  const v = el(`<div class="wrap center">
+    <div style="text-align:center;margin-bottom:26px">
+      <h1 class="logo">Time<br>line</h1>
+      <p class="tag">Name that year</p>
+    </div>
+    ${msg?`<div class="err" style="margin-bottom:14px">${esc(msg)}</div>`:''}
+    <div class="card stack">
+      <div>
+        <h2>One-time setup</h2>
+        <p class="sub">Spotify needs to know this app exists. Takes about two minutes, once.</p>
+      </div>
+      <ol class="steps">
+        <li>Open <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener">developer.spotify.com/dashboard</a> and log in with your Spotify account.</li>
+        <li>Click <b>Create app</b>. Name it anything (e.g. <i>Timeline</i>), description anything.</li>
+        <li>In <b>Redirect URIs</b> paste exactly this, then press <b>Add</b>:
+          <div class="code" style="margin-top:8px">${esc(REDIRECT)}</div></li>
+        <li>Under <b>Which API/SDKs are you planning to use?</b> tick <b>Web API</b> and <b>Web Playback SDK</b>.</li>
+        <li>Save. Open the app's <b>Settings</b>, copy the <b>Client ID</b>, and paste it below.</li>
+      </ol>
+      <div style="margin-top:4px">
+        <label class="lbl" for="cid">Spotify Client ID</label>
+        <input id="cid" type="text" spellcheck="false" autocapitalize="off" autocomplete="off"
+               placeholder="e.g. 4f9c1a2b3d4e5f60718293a4b5c6d7e8" value="${esc(cid)}">
+      </div>
+      <button class="btn btn-primary" id="save">Save &amp; continue</button>
+      <p class="small">Stored only in this browser. Spotify Premium is required for playback.</p>
+    </div>
+  </div>`);
+  v.querySelector('#save').onclick = () => {
+    const val = v.querySelector('#cid').value.trim();
+    if(val.length < 20) return screenSetup('That does not look like a Client ID — it is a long string of letters and numbers.');
+    store.set(K.CID, val);
+    screenConnect();
+  };
+  render(v);
+}
+
+/* ---------- 2. connect ---------- */
+function screenConnect(msg){
+  const v = el(`<div class="wrap center">
+    <div style="text-align:center;margin-bottom:30px">
+      <h1 class="logo">Time<br>line</h1>
+      <p class="tag">Name that year</p>
+    </div>
+    ${msg?`<div class="err" style="margin-bottom:14px">${esc(msg)}</div>`:''}
+    <div class="stack">
+      <button class="btn btn-primary" id="go">Connect Spotify</button>
+      <button class="btn btn-ghost btn-sm" id="reset" style="width:auto;margin:6px auto 0">Change Client ID</button>
+    </div>
+    <p class="small" style="text-align:center;margin-top:26px">
+      Pick playlists, hear a mystery song, guess the year.<br>Premium account required.
+    </p>
+  </div>`);
+  v.querySelector('#go').onclick = beginLogin;
+  v.querySelector('#reset').onclick = () => screenSetup();
+  render(v);
+}
+
+/* ---------- 3. loading ---------- */
+function screenLoading(text='Loading'){
+  render(el(`<div class="wrap center">
+    <div style="text-align:center">
+      <div class="spinner"></div>
+      <p class="tag" style="margin-top:20px">${esc(text)}</p>
+    </div>
+  </div>`));
+}
+
+/* ---------- 4. playlists ---------- */
+async function screenPlaylists(){
+  screenLoading('Fetching your playlists');
+  let items = [];
+  try{
+    let url = '/me/playlists?limit=50';
+    while(url){ const p = await api(url); items = items.concat(p.items.filter(Boolean)); url = p.next; }
+  }catch(e){ return screenConnect('Could not load playlists: '+e.message); }
+
+  S.playlists = [{id:'__liked__', name:'Liked Songs', tracks:{total:null}, images:[], liked:true}, ...items];
+
+  const v = el(`<div class="wrap">
+    <div class="spread" style="margin-bottom:16px">
+      <div>
+        <h2>Choose playlists</h2>
+        <p class="sub" style="margin:2px 0 0">Pick one or more. They get shuffled together.</p>
+      </div>
+      <button class="btn btn-ghost btn-sm" id="out">Sign out</button>
+    </div>
+    <div class="list" id="list" style="flex:1;max-height:none"></div>
+    <div class="foot">
+      <button class="btn btn-primary" id="next" disabled>Select playlists</button>
+    </div>
+  </div>`);
+  const list = v.querySelector('#list'), next = v.querySelector('#next');
+  const sync = () => {
+    const n = S.chosen.size;
+    next.disabled = !n;
+    next.textContent = n ? `Continue with ${n} playlist${n>1?'s':''}` : 'Select playlists';
+  };
+  S.playlists.forEach(p => {
+    const img = p.images?.[0]?.url;
+    const row = el(`<button class="pl${S.chosen.has(p.id)?' on':''}">
+      ${img?`<img src="${esc(img)}" alt="" loading="lazy">`:`<div class="ph"></div>`}
+      <div class="grow">
+        <div class="nm">${esc(p.name)}</div>
+        <div class="ct">${p.liked?'Your saved songs':esc((p.tracks?.total ?? 0)+' tracks'+(p.owner?.display_name?' · '+p.owner.display_name:''))}</div>
+      </div>
+      <div class="tick">${S.chosen.has(p.id)?'✓':''}</div>
+    </button>`);
+    row.onclick = () => {
+      if(S.chosen.has(p.id)){ S.chosen.delete(p.id); row.classList.remove('on'); row.querySelector('.tick').textContent=''; }
+      else { S.chosen.add(p.id); row.classList.add('on'); row.querySelector('.tick').textContent='✓'; }
+      sync();
+    };
+    list.appendChild(row);
+  });
+  sync();
+  v.querySelector('#out').onclick = logout;
+  next.onclick = screenPlayers;
+  render(v);
+}
+
+/* ---------- 5. players ---------- */
+function screenPlayers(){
+  if(!S.players.length){
+    let saved = null;
+    try{ saved = JSON.parse(store.get(K.PLAYERS)||'null'); }catch(e){}
+    S.players = (Array.isArray(saved) && saved.length)
+      ? saved.map((n,i)=>({name:n.name||n, score:0, color:COLORS[i%COLORS.length]}))
+      : [{name:'Player 1',score:0,color:COLORS[0]},{name:'Player 2',score:0,color:COLORS[1]}];
+  }
+  try{ S.rules = {...DEFAULT_RULES, ...(JSON.parse(store.get(K.RULES)||'{}')||{})}; }catch(e){ S.rules = {...DEFAULT_RULES}; }
+
+  const v = el(`<div class="wrap">
+    <div style="margin-bottom:16px">
+      <h2>Who is playing?</h2>
+      <p class="sub" style="margin:2px 0 0">Two to six players or teams.</p>
+    </div>
+    <div class="stack" id="ps"></div>
+    <button class="btn btn-ghost btn-sm" id="add" style="margin-top:12px;width:auto">+ Add player</button>
+    <div class="card" style="margin-top:20px">
+      <div class="spread" style="margin-bottom:6px">
+        <div>
+          <h2 style="font-size:17px;margin:0">Scoring</h2>
+          <p class="small" style="margin:3px 0 0">Points awarded per card, per player.</p>
+        </div>
+        <button class="btn btn-ghost btn-sm" id="rst">Reset</button>
+      </div>
+      <div id="rules"></div>
+      <p class="small" id="maxline" style="margin-top:12px"></p>
+    </div>
+    <div class="foot">
+      <button class="btn btn-cy" id="start">Start game</button>
+      <button class="btn btn-ghost btn-sm" id="back" style="margin:0 auto">Back to playlists</button>
+    </div>
+  </div>`);
+
+  const ps = v.querySelector('#ps');
+  const draw = () => {
+    ps.innerHTML='';
+    S.players.forEach((p,i)=>{
+      const r = el(`<div class="pchip">
+        <span class="dot" style="background:${p.color};color:${p.color}"></span>
+        <input type="text" value="${esc(p.name)}" maxlength="18" style="background:transparent;border:0;padding:8px 0;font-weight:700">
+        ${S.players.length>2?'<button class="iconbtn" style="width:38px;height:38px"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" stroke="#ff8098" stroke-width="2.2" fill="none" stroke-linecap="round"/></svg></button>':''}
+      </div>`);
+      r.querySelector('input').oninput = e => p.name = e.target.value;
+      const del = r.querySelector('button');
+      if(del) del.onclick = () => { S.players.splice(i,1); draw(); };
+      ps.appendChild(r);
+    });
+    v.querySelector('#add').style.display = S.players.length>=6 ? 'none' : '';
+  };
+  draw();
+
+  const rulesBox = v.querySelector('#rules'), maxline = v.querySelector('#maxline');
+  const saveRules = () => store.set(K.RULES, JSON.stringify(S.rules));
+  const drawRules = () => {
+    rulesBox.innerHTML = '';
+    RULE_ROWS.forEach(([key,label,hint,min,max])=>{
+      const step = key==='target' ? 5 : 1;
+      const row = el(`<div class="setrow">
+        <div class="k">${label}<small>${hint}</small></div>
+        <div class="stepper">
+          <button data-d="-1" aria-label="less">−</button>
+          <span class="n">${S.rules[key]}</span>
+          <button data-d="1" aria-label="more">+</button>
+        </div>
+      </div>`);
+      row.querySelectorAll('button').forEach(b=>{
+        b.onclick = () => {
+          const nv = S.rules[key] + (+b.dataset.d)*step;
+          S.rules[key] = Math.max(min, Math.min(max, nv));
+          saveRules(); drawRules();
+        };
+      });
+      rulesBox.appendChild(row);
+    });
+    const r = S.rules;
+    maxline.textContent = `Best possible card: ${r.exact + r.artist + r.song + r.album} points.`;
+  };
+  drawRules();
+  v.querySelector('#rst').onclick = () => { S.rules = {...DEFAULT_RULES}; saveRules(); drawRules(); };
+
+  v.querySelector('#add').onclick = () => {
+    S.players.push({name:'Player '+(S.players.length+1), score:0, color:COLORS[S.players.length%COLORS.length]});
+    draw();
+  };
+  v.querySelector('#back').onclick = () => { S.deck=[]; screenPlaylists(); };
+  v.querySelector('#start').onclick = () => {
+    S.players.forEach(p => { p.name = (p.name||'').trim() || 'Player'; p.score = 0; });
+    store.set(K.PLAYERS, JSON.stringify(S.players.map(p=>({name:p.name}))));
+    S.turn = 0;
+    startGame();
+  };
+  render(v);
+}
+
+/* ============================================================
+   DECK BUILDING
+   ============================================================ */
+async function buildDeck(){
+  const seen = new Set(), deck = [];
+  for(const id of S.chosen){
+    // Feb 2026: /playlists/{id}/tracks was replaced by /playlists/{id}/items.
+    // Try the new path first, fall back for older client IDs.
+    let url = id==='__liked__' ? '/me/tracks?limit=50' : `/playlists/${id}/items?limit=100&additional_types=track`;
+    while(url){
+      let page;
+      try{
+        page = await api(url);
+      }catch(err){
+        if((err.status===404 || err.status===403) && url.includes('/items?')){
+          url = url.replace('/items?', '/tracks?');
+          page = await api(url);
+        } else throw err;
+      }
+      for(const it of (page.items||[])){
+        const t = it?.track || (it?.type === 'track' ? it : null);
+        if(!t || t.type!=='track' || !t.uri || t.is_local || !t.id) continue;
+        if(seen.has(t.id)) continue;
+        seen.add(t.id);
+        deck.push({
+          id:t.id, uri:t.uri, name:t.name,
+          artists:(t.artists||[]).map(a=>a.name),
+          album:t.album?.name || '',
+          art:t.album?.images?.[0]?.url || '',
+          spYear:parseInt((t.album?.release_date||'').slice(0,4),10) || null
+        });
+      }
+      url = page.next;
+    }
+  }
+  // Fisher-Yates
+  for(let i=deck.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [deck[i],deck[j]]=[deck[j],deck[i]]; }
+  return deck;
+}
+
+/* ============================================================
+   ORIGINAL RELEASE YEAR (MusicBrainz cross-check)
+   Spotify's release_date is the date of *this* album — remasters
+   and compilations report the reissue year. MusicBrainz knows the
+   first release date of the recording itself.
+   ============================================================ */
+let mbQueue = Promise.resolve();
+function mbThrottled(fn){ const p = mbQueue.then(fn); mbQueue = p.then(()=>sleep(1100), ()=>sleep(1100)); return p; }
+
+async function originalYear(track){
+  if(S.yearCache.has(track.id)) return S.yearCache.get(track.id);
+  const fallback = { year: track.spYear, source:'spotify', spYear: track.spYear };
+  let out = fallback;
+  try{
+    const q = `recording:"${track.name.replace(/"/g,'')}" AND artist:"${(track.artists[0]||'').replace(/"/g,'')}"`;
+    const url = 'https://musicbrainz.org/ws/2/recording?fmt=json&limit=8&query=' + encodeURIComponent(q);
+    const res = await mbThrottled(() => fetch(url, {headers:{Accept:'application/json'}}));
+    if(res.ok){
+      const j = await res.json();
+      const norm = s => (s||'').toLowerCase().replace(/\(.*?\)|\[.*?\]/g,'').replace(/[^a-z0-9]/g,'').trim();
+      const want = norm(track.name), wantA = norm(track.artists[0]);
+      let best = null;
+      for(const r of (j.recordings||[])){
+        if((r.score||0) < 85) continue;
+        if(norm(r.title) !== want) continue;
+        const credit = (r['artist-credit']||[]).map(a=>norm(a.name)).join('');
+        if(wantA && credit && !credit.includes(wantA) && !wantA.includes(credit)) continue;
+        const y = parseInt((r['first-release-date']||'').slice(0,4),10);
+        if(y && y>=1900 && (!best || y<best)) best = y;
+      }
+      if(best && (!track.spYear || best <= track.spYear)){
+        out = { year: best, source:'musicbrainz', spYear: track.spYear };
+      }
+    }
+  }catch(e){ /* offline or blocked — Spotify's year still works */ }
+  S.yearCache.set(track.id, out);
+  return out;
+}
+
+/* ============================================================
+   PLAYBACK
+   ============================================================ */
+function loadSDK(){
+  return new Promise((resolve, reject) => {
+    if(window.Spotify) return resolve();
+    window.onSpotifyWebPlaybackSDKReady = () => resolve();
+    const s = document.createElement('script');
+    s.src = 'https://sdk.scdn.co/spotify-player.js';
+    s.onerror = () => reject(new Error('Could not load the Spotify player script'));
+    document.head.appendChild(s);
+    setTimeout(()=>reject(new Error('Spotify player timed out')), 15000);
+  });
+}
+
+async function initPlayer(){
+  await loadSDK();
+  return new Promise((resolve, reject) => {
+    const player = new Spotify.Player({
+      name:'Timeline Game',
+      getOAuthToken: cb => tok().then(cb).catch(()=>{}),
+      volume: 0.75
+    });
+    let settled = false;
+    // Some Android devices drop to Widevine L3 and the SDK throws an EME error
+    // from deep inside a promise we never get a handle on. Catch it globally.
+    const onRej = ev => {
+      const m = String(ev?.reason?.message || ev?.reason || '');
+      if(/EME|Widevine|security level|MediaKey|robustness/i.test(m)) fail('This phone can’t stream Spotify inside the browser (DRM restriction).');
+    };
+    const done = () => { settled = true; window.removeEventListener('unhandledrejection', onRej); };
+    const fail = msg => { if(!settled){ done(); try{player.disconnect()}catch(e){} reject(new Error(msg)); } };
+    window.addEventListener('unhandledrejection', onRej);
+
+    player.addListener('ready', ({device_id}) => { if(settled) return; done(); S.deviceId=device_id; S.player=player; resolve(player); });
+    player.addListener('not_ready', () => { S.deviceId=null; });
+    player.addListener('initialization_error', ({message}) => fail(message));
+    player.addListener('authentication_error', ({message}) => fail(message));
+    player.addListener('account_error', () => fail('Spotify Premium is required to play audio in the browser.'));
+    player.addListener('playback_error', ({message}) => { if(!S.deviceId) fail(message); });
+    player.addListener('player_state_changed', st => { if(st) S.playing = !st.paused; });
+    player.connect();
+    // Phones rarely succeed here, so don't make people stare at a spinner.
+    setTimeout(()=>fail('The browser player did not start up.'), IS_MOBILE ? 8000 : 14000);
+  });
+}
+
+async function playTrack(uri){
+  const dev = S.deviceId || S.connectDevice;
+  if(!dev) throw new Error('No playback device available');
+  await api(`/me/player/play?device_id=${encodeURIComponent(dev)}`, {
+    method:'PUT', body: JSON.stringify({ uris:[uri], position_ms:0 })
+  });
+  S.playing = true;
+}
+async function pausePlayback(){
+  try{
+    if(S.player) await S.player.pause();
+    else await api('/me/player/pause',{method:'PUT'});
+  }catch(e){}
+  S.playing = false;
+}
+async function togglePlay(){
+  try{
+    if(S.player){ await S.player.togglePlay(); S.playing = !S.playing; }
+    else if(S.playing){ await api('/me/player/pause',{method:'PUT'}); S.playing=false; }
+    else { await api('/me/player/play',{method:'PUT'}); S.playing=true; }
+  }catch(e){}
+}
+async function restartTrack(){
+  try{
+    if(S.player) await S.player.seek(0);
+    else await api('/me/player/seek?position_ms=0',{method:'PUT'});
+    if(!S.playing) await togglePlay();
+  }catch(e){ try{ await playTrack(S.deck[S.idx].uri); }catch(_){} }
+}
+
+/* ---------- fallback: pick another Spotify Connect device ---------- */
+async function screenDevices(reason){
+  screenLoading('Looking for Spotify devices');
+  let devs = [];
+  try{ devs = (await api('/me/player/devices'))?.devices || []; }catch(e){}
+  const how = IS_MOBILE
+    ? `<ol class="steps">
+         <li>Leave this tab open and switch to the <b>Spotify app</b> on this phone.</li>
+         <li>Play any song for a second, then pause it. That registers the phone as a device.</li>
+         <li>Come back here and tap <b>Refresh device list</b>.</li>
+       </ol>`
+    : `<p class="small">Open the Spotify app on your phone, computer or speaker and press play on anything once — it will then show up in this list.</p>`;
+  const spoiler = IS_MOBILE
+    ? `<div class="err" style="margin-top:2px">Spoiler warning: in this mode the Spotify app shows the song title in your notification shade and on the lock screen. Keep the shade closed while you play.</div>`
+    : '';
+  const v = el(`<div class="wrap center">
+    <div class="card stack">
+      <div>
+        <h2>Play through Spotify</h2>
+        <p class="sub" style="margin:2px 0 0">${esc(reason||'This browser cannot play audio directly.')}</p>
+      </div>
+      ${how}
+      <div class="list" id="dv"></div>
+      <button class="btn btn-cy" id="again">Refresh device list</button>
+      ${spoiler}
+      <button class="btn btn-ghost btn-sm" id="back" style="margin:0 auto">Back</button>
+    </div>
+  </div>`);
+  const dv = v.querySelector('#dv');
+  if(!devs.length) dv.appendChild(el('<p class="small" style="text-align:center;padding:10px">No devices found yet.</p>'));
+  devs.forEach(d=>{
+    const b = el(`<button class="pl"><div class="ph"></div><div class="grow"><div class="nm">${esc(d.name)}</div><div class="ct">${esc(d.type)}${d.is_active?' · active':''}</div></div><div class="tick"></div></button>`);
+    b.onclick = () => { S.connectDevice = d.id; S.deviceId = null; startGame(true); };
+    dv.appendChild(b);
+  });
+  v.querySelector('#again').onclick = () => screenDevices(reason);
+  v.querySelector('#back').onclick = () => (S.deck.length && S.idx >= 0) ? drawGame() : screenPlayers();
+  render(v);
+}
+
+/* ============================================================
+   GAME
+   ============================================================ */
+async function startGame(skipPlayerInit){
+  screenLoading('Shuffling the deck');
+  try{
+    if(!S.deck.length){
+      S.deck = await buildDeck();
+      if(S.deck.length < 2) return screenPlaylists();
+    }
+  }catch(e){ return screenConnect('Could not read those playlists: '+e.message); }
+
+  if(!skipPlayerInit && !S.deviceId && !S.connectDevice){
+    screenLoading(IS_MOBILE ? 'Looking for a speaker' : 'Waking up the player');
+    try{
+      await initPlayer();
+      try{ await S.player.activateElement(); }catch(e){}   // mobile needs the gesture
+    }
+    catch(e){ S.sdkFailed = true; return screenDevices(e.message); }
+  }
+  S.idx = -1;
+  nextSong();
+}
+
+async function nextSong(){
+  if(S.busy) return;
+  if(S.idx+1 >= S.deck.length) return screenEnd(true);
+  S.busy = true;
+  S.idx++; S.revealed = false;
+  S.pick = {tier:null, artist:false, song:false, album:false};
+  const t = S.deck[S.idx];
+  drawGame();
+  try{ await playTrack(t.uri); }
+  catch(e){
+    S.busy = false;
+    if(e.status===404 || /device/i.test(e.message||'')) return screenDevices('Lost contact with the player.');
+    if(e.reason==='PREMIUM_REQUIRED') return screenDevices('That account needs Spotify Premium for in-browser playback.');
+    drawGame('Could not start that track. Try Skip.');
+    return;
+  }
+  S.busy = false;
+  drawGame();
+  originalYear(t);                                     // warm this song's year
+  if(S.deck[S.idx+1]) originalYear(S.deck[S.idx+1]);   // and pre-warm the next
+}
+
+function scoreStrip(){
+  return `<div class="scorebar">${S.players.map((p,i)=>
+    `<div class="sc${i===S.turn?' turn':''}"><span class="dot" style="background:${p.color};color:${p.color}"></span>${esc(p.name)}<span class="pts">${p.score}</span></div>`
+  ).join('')}</div>`;
+}
+
+function drawGame(err){
+  const t = S.deck[S.idx];
+  const p = S.players[S.turn];
+  const v = el(`<div class="wrap">
+    ${scoreStrip()}
+    ${err?`<div class="err" style="margin:8px 0">${esc(err)}</div>`:''}
+    <div class="stage">
+      <p class="turnline">Card ${S.idx+1} · <b>${esc(p.name)}</b>'s turn</p>
+      <div class="disc spin">
+        <div class="ring"></div><div class="ring r2"></div><div class="ring r3"></div>
+        ${t.art?`<img class="art blur" src="${esc(t.art)}" alt="">`:`<div class="art"></div>`}
+        <div class="hole"></div>
+        <div class="qmark">?</div>
+      </div>
+      <div class="eq${S.playing?'':' off'}"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      <p class="small" style="text-align:center;max-width:320px">Listen, then say the year out loud.<br>Press DONE to reveal.</p>
+    </div>
+    <div class="foot">
+      <div class="row" style="justify-content:center;gap:14px">
+        <button class="iconbtn" id="rw" title="Restart song"><svg viewBox="0 0 24 24"><path d="M12 5V2L7 6l5 4V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z"/></svg></button>
+        <button class="iconbtn" id="pp" title="Play / pause"><svg viewBox="0 0 24 24">${S.playing?'<path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/>':'<path d="M7 4l13 8-13 8z"/>'}</svg></button>
+        <button class="iconbtn" id="sk" title="Skip this song"><svg viewBox="0 0 24 24"><path d="M5 5l9 7-9 7zM16 5h3v14h-3z"/></svg></button>
+      </div>
+      <button class="btn btn-primary" id="done">Done — reveal</button>
+      <div class="pillrow">
+        <button class="btn btn-ghost btn-sm" id="dev">Change speaker</button>
+        <button class="btn btn-ghost btn-sm" id="quit">End game</button>
+      </div>
+    </div>
+  </div>`);
+  v.querySelector('#done').onclick = doReveal;
+  v.querySelector('#dev').onclick = () => screenDevices('Pick where the music should come out.');
+  v.querySelector('#pp').onclick = async () => { await togglePlay(); drawGame(err); };
+  v.querySelector('#rw').onclick = restartTrack;
+  v.querySelector('#sk').onclick = nextSong;
+  v.querySelector('#quit').onclick = () => screenEnd(false);
+  render(v);
+}
+
+async function doReveal(){
+  S.revealed = true;
+  S.pick = {tier:null, artist:false, song:false, album:false};
+  const t = S.deck[S.idx];
+  drawReveal(S.yearCache.get(t.id) || null);
+  if(!S.yearCache.has(t.id)){
+    const info = await originalYear(t);
+    if(S.revealed && S.deck[S.idx] === t) drawReveal(info);
+  }
+}
+
+function drawReveal(info){
+  const t = S.deck[S.idx];
+  const p = S.players[S.turn];
+  const r = S.rules, pk = S.pick;
+  const total = pickTotal();
+  const yearTxt = info ? (info.year || '—') : '…';
+  const note = (info && info.source==='musicbrainz' && info.spYear && info.spYear !== info.year)
+    ? `Original release. This copy on Spotify is dated ${info.spYear}.` : '';
+  const v = el(`<div class="wrap">
+    ${scoreStrip()}
+    <div class="stage">
+      <div class="reveal">
+        ${t.art?`<img class="covershot" src="${esc(t.art)}" alt="">`:''}
+        <div class="year">${esc(String(yearTxt))}</div>
+        <div class="title">${esc(t.name)}</div>
+        <div class="artist">${esc(t.artists.join(', '))}</div>
+        <div class="album">${esc(t.album)}</div>
+        ${note?`<div class="note">${esc(note)}</div>`:''}
+      </div>
+    </div>
+    <div class="foot">
+      <p class="turnline" style="margin-bottom:2px">Score for <b>${esc(p.name)}</b></p>
+      <div class="opts opts3">
+        <button class="opt mini${pk.tier==='exact'?' on':''}" data-t="exact">Exact year<span class="v">+${r.exact}</span></button>
+        <button class="opt mini${pk.tier==='gap'?' on':''}" data-t="gap">Correct gap<span class="v">+${r.gap}</span></button>
+        <button class="opt mini zero${pk.tier==='miss'?' on':''}" data-t="miss">Missed<span class="v">0</span></button>
+      </div>
+      <div class="opts">
+        <button class="opt${pk.artist?' on':''}" data-k="artist">Named the artist<span class="v">+${r.artist}</span></button>
+        <button class="opt${pk.song?' on':''}" data-k="song">Named the song<span class="v">+${r.song}</span></button>
+        <button class="opt${pk.album?' on':''}" data-k="album">Named the album<span class="v">+${r.album}</span></button>
+      </div>
+      <button class="btn btn-good" id="add" ${pk.tier?'':'disabled'}>
+        ${pk.tier ? `<span class="tot">Add ${total} point${total===1?'':'s'}</span>` : 'Pick a year result'}
+      </button>
+      <div class="row" style="justify-content:center;gap:14px;padding-top:2px">
+        <button class="iconbtn" id="rw" title="Play it again"><svg viewBox="0 0 24 24"><path d="M12 5V2L7 6l5 4V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z"/></svg></button>
+        <button class="iconbtn" id="pp" title="Play / pause"><svg viewBox="0 0 24 24">${S.playing?'<path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/>':'<path d="M7 4l13 8-13 8z"/>'}</svg></button>
+      </div>
+      <button class="btn btn-ghost btn-sm" id="quit" style="margin:0 auto">End game</button>
+    </div>
+  </div>`);
+  v.querySelectorAll('[data-t]').forEach(b => b.onclick = () => {
+    pk.tier = (pk.tier === b.dataset.t) ? null : b.dataset.t;
+    drawReveal(info);
+  });
+  v.querySelectorAll('[data-k]').forEach(b => b.onclick = () => {
+    pk[b.dataset.k] = !pk[b.dataset.k];
+    drawReveal(info);
+  });
+  v.querySelector('#add').onclick = () => award(total);
+  v.querySelector('#pp').onclick = async () => { await togglePlay(); drawReveal(info); };
+  v.querySelector('#rw').onclick = restartTrack;
+  v.querySelector('#quit').onclick = () => screenEnd(false);
+  render(v);
+}
+
+/* points the current selection is worth */
+function pickTotal(){
+  const r = S.rules, pk = S.pick;
+  let n = pk.tier === 'exact' ? r.exact : pk.tier === 'gap' ? r.gap : 0;
+  if(pk.artist) n += r.artist;
+  if(pk.song)   n += r.song;
+  if(pk.album)  n += r.album;
+  return n;
+}
+
+function award(points){
+  const p = S.players[S.turn];
+  p.score += points;
+  if(p.score >= S.rules.target) return screenEnd(false);
+  S.turn = (S.turn + 1) % S.players.length;
+  nextSong();
+}
+
+/* ---------- end ---------- */
+function screenEnd(outOfSongs){
+  pausePlayback();
+  const ranked = [...S.players].sort((a,b)=>b.score-a.score);
+  const top = ranked[0];
+  const tie = ranked.filter(p=>p.score===top.score);
+  const v = el(`<div class="wrap center">
+    <div class="card winner stack">
+      <div class="crown">${tie.length>1?'🤝':'🏆'}</div>
+      <h2 style="margin-top:6px">${tie.length>1?'It is a tie':esc(top.name)+' wins'}</h2>
+      <p class="sub" style="margin:0">${outOfSongs?'You played every song in the deck.':'Final scores'}</p>
+      <div class="stack" style="margin-top:8px">
+        ${ranked.map(p=>`<div class="pchip"><span class="dot" style="background:${p.color};color:${p.color}"></span>
+          <span class="grow" style="font-weight:700">${esc(p.name)}</span>
+          <span class="pts" style="font-family:var(--display);font-size:19px">${p.score}</span></div>`).join('')}
+      </div>
+      <button class="btn btn-primary" id="again" style="margin-top:10px">Play again — same playlists</button>
+      <button class="btn btn-ghost" id="pl">Pick different playlists</button>
+    </div>
+  </div>`);
+  v.querySelector('#again').onclick = () => {
+    S.players.forEach(p=>p.score=0); S.turn=0;
+    for(let i=S.deck.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [S.deck[i],S.deck[j]]=[S.deck[j],S.deck[i]]; }
+    startGame(true);
+  };
+  v.querySelector('#pl').onclick = () => { S.deck=[]; S.chosen.clear(); screenPlaylists(); };
+  render(v);
+}
+
+/* ============================================================
+   KEYBOARD (desktop convenience)
+   ============================================================ */
+document.addEventListener('keydown', e => {
+  if(e.target.tagName === 'INPUT') return;
+  const k = e.key.toLowerCase();
+  const click = sel => { const n = $(sel); if(n && !n.disabled){ e.preventDefault(); n.click(); return true; } return false; };
+
+  if(k === ' ' || k === 'enter'){ if(click('#done')) return; click('#add'); return; }
+  if(S.revealed){
+    if(k === '1') return void click('[data-t="exact"]');
+    if(k === '2') return void click('[data-t="gap"]');
+    if(k === '3') return void click('[data-t="miss"]');
+    if(k === 'a') return void click('[data-k="artist"]');
+    if(k === 't') return void click('[data-k="song"]');
+    if(k === 'b') return void click('[data-k="album"]');
+  }
+  if(k === 'r') click('#rw');
+  if(k === 'p') click('#pp');
+  if(k === 's') click('#sk');
+});
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+(async function boot(){
+  const q = new URLSearchParams(location.search);
+
+  if(q.get('error')){
+    history.replaceState({}, '', REDIRECT);
+    return screenConnect('Spotify said: ' + q.get('error') + '. Check that the redirect URI in your dashboard matches exactly.');
+  }
+  if(q.get('code')){
+    screenLoading('Signing you in');
+    try{
+      await exchangeCode(q.get('code'));
+      history.replaceState({}, '', REDIRECT);
+      store.del(K.VER);
+      return screenPlaylists();
+    }catch(e){
+      history.replaceState({}, '', REDIRECT);
+      store.del(K.VER);
+      if(e.network){
+        screenLoading('Checking the connection');
+        return screenConnect(await diagnoseNetwork());
+      }
+      return screenConnect('Sign-in failed: ' + e.message);
+    }
+  }
+
+  if(!store.get(K.CID)) return screenSetup();
+
+  S.token = store.get(K.TOK);
+  S.refresh = store.get(K.REF);
+  S.expires = +(store.get(K.EXP) || 0);
+  if(S.refresh){
+    try{ await tok(); return screenPlaylists(); }
+    catch(e){ /* fall through to connect */ }
+  }
+  screenConnect();
+})();
+</script>
+</body>
+</html>
