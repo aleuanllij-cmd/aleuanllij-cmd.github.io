@@ -821,6 +821,80 @@ async function screenDevices(reason){
 }
 
 /* ============================================================
+   DIAGNOSTICS — when Spotify says no, find out exactly what it
+   refused and whether the account actually has Premium.
+   ============================================================ */
+async function probe(path){
+  try{
+    const t = await tok();
+    const r = await fetch('https://api.spotify.com/v1' + path, { headers:{ Authorization:'Bearer '+t } });
+    let body = null;
+    try{ body = await r.json(); }catch(e){}
+    return { status:r.status, ok:r.ok, msg: body?.error?.message || '', body };
+  }catch(e){ return { status:0, ok:false, msg:'could not reach Spotify' }; }
+}
+
+function screenDeckError(err){
+  const v = el(`<div class="wrap center">
+    <div class="card stack">
+      <div>
+        <h2>Spotify said no</h2>
+        <p class="sub" style="margin:2px 0 0">${esc(err && err.message || 'Unknown error')}</p>
+      </div>
+      <button class="btn btn-cy" id="run">Run checks</button>
+      <button class="btn btn-ghost btn-sm" id="back" style="margin:0 auto">Back to playlists</button>
+    </div>
+  </div>`);
+  v.querySelector('#run').onclick = screenApiReport;
+  v.querySelector('#back').onclick = () => { S.deck=[]; screenPlaylists(); };
+  render(v);
+}
+
+async function screenApiReport(){
+  screenLoading('Asking Spotify what it allows');
+  const rows = [];
+  const line = (k, r) => rows.push([k, r.ok ? 'OK' : `${r.status || '—'} ${r.msg || 'failed'}`.trim()]);
+
+  const me = await probe('/me');
+  rows.push(['Signed in as', me.ok ? (me.body.display_name || me.body.id || '?') : `${me.status} ${me.msg}`]);
+  rows.push(['Subscription', me.ok ? String(me.body.product || 'unknown').toUpperCase() : 'could not read']);
+  rows.push(['Country', me.ok ? (me.body.country || '?') : '—']);
+
+  line('List my playlists', await probe('/me/playlists?limit=1'));
+
+  const first = [...S.chosen].find(id => id !== '__liked__');
+  if(first){
+    line('Playlist items', await probe(`/playlists/${first}/items?limit=1`));
+    line('Playlist items +param', await probe(`/playlists/${first}/items?limit=1&additional_types=track`));
+    line('Playlist tracks (old path)', await probe(`/playlists/${first}/tracks?limit=1`));
+    line('Playlist details', await probe(`/playlists/${first}`));
+  }
+  if(S.chosen.has('__liked__')) line('Liked songs', await probe('/me/tracks?limit=1'));
+  line('Playback devices', await probe('/me/player/devices'));
+
+  const isFree = me.ok && me.body.product && me.body.product !== 'premium';
+  const verdict = isFree
+    ? 'This Spotify account is NOT Premium. Since February 2026 the Web API requires it, which is why requests come back Forbidden. Sign in with your Premium account, or the game cannot work.'
+    : 'Screenshot this and send it to Claude.';
+
+  const v = el(`<div class="wrap">
+    <h2 style="margin-bottom:12px">Spotify check</h2>
+    <div class="card">
+      ${rows.map(([k,val])=>`<div class="setrow"><div class="k">${esc(k)}</div>
+        <div style="font-size:12.5px;text-align:right;max-width:58%;color:${/^OK$/.test(val)?'#8df5be':'#ff8098'}">${esc(val)}</div></div>`).join('')}
+    </div>
+    <div class="${isFree?'err':'ok'}" style="margin-top:14px">${esc(verdict)}</div>
+    <div class="foot">
+      <button class="btn btn-ghost" id="back">Back to playlists</button>
+      <button class="btn btn-ghost btn-sm" id="out" style="margin:0 auto">Sign out and switch account</button>
+    </div>
+  </div>`);
+  v.querySelector('#back').onclick = () => { S.deck=[]; screenPlaylists(); };
+  v.querySelector('#out').onclick = logout;
+  render(v);
+}
+
+/* ============================================================
    GAME
    ============================================================ */
 async function startGame(skipPlayerInit){
@@ -830,7 +904,7 @@ async function startGame(skipPlayerInit){
       S.deck = await buildDeck();
       if(S.deck.length < 2) return screenPlaylists();
     }
-  }catch(e){ return screenConnect('Could not read those playlists: '+e.message); }
+  }catch(e){ return screenDeckError(e); }
 
   if(!skipPlayerInit && !S.deviceId && !S.connectDevice){
     screenLoading(IS_MOBILE ? 'Looking for a speaker' : 'Waking up the player');
