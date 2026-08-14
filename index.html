@@ -265,13 +265,14 @@ const SCOPES = [
 // Normalise so /index.html and / register as the same redirect URI in Spotify.
 const REDIRECT = location.origin + location.pathname.replace(/index\.html$/i, '');
 const IS_MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+const BUILD = 'build 7';   // bump on every release so we can tell versions apart
 const COLORS = ['#ff2d95','#00e5ff','#ffd23f','#22e07a','#8b5cf6','#ff8a3d'];
 
 /* ---------- app state ---------- */
 const S = {
   token:null, refresh:null, expires:0, me:null,
   playlists:[], chosen:new Set(),
-  deck:[], idx:-1,
+  deck:[], idx:-1, live:false, livePlaylist:null,
   players:[], turn:0, rules:{...DEFAULT_RULES},
   revealed:false, playing:false,
   pick:{tier:null, artist:false, song:false, album:false}, capNote:'',
@@ -458,6 +459,7 @@ function screenConnect(msg){
     </div>
     <p class="small" style="text-align:center;margin-top:26px">
       Pick playlists, hear a mystery song, guess the year.<br>Premium account required.
+      <br><span style="opacity:.55">${esc(BUILD)}</span>
     </p>
   </div>`);
   v.querySelector('#go').onclick = beginLogin;
@@ -647,14 +649,25 @@ async function collectFrom(id, add){
   catch(e){ if(e.status !== 403 && e.status !== 404) throw e; }
 
   const pl = await api(`/playlists/${id}`);
-  const got = pl?.tracks?.items || [];
-  got.forEach(add);
-  let url = pl?.tracks?.next, capped = false;
+  const emb = embeddedTracks(pl);
+  emb.list.forEach(add);
+  if(!emb.list.length) throw Object.assign(new Error('Playlist contents are not readable'), {status:403});
+  let url = emb.next, capped = false;
   while(url){
     try{ const p = await api(url); (p.items||[]).forEach(add); url = p.next; }
-    catch(e){ capped = (pl?.tracks?.total || 0) > got.length; break; }
+    catch(e){ capped = emb.total > emb.list.length; break; }
   }
   return {capped};
+}
+
+/* The playlist object has moved its track list around more than once:
+   tracks.items, then a top-level items paging object. Find it wherever it is. */
+function embeddedTracks(pl){
+  for(const c of [pl?.items, pl?.tracks]){
+    if(Array.isArray(c)) return {list:c, total:c.length, next:null};
+    if(c && Array.isArray(c.items)) return {list:c.items, total:c.total ?? c.items.length, next:c.next || null};
+  }
+  return {list:[], total:0, next:null};
 }
 
 async function buildDeck(){
@@ -776,6 +789,45 @@ async function initPlayer(){
   });
 }
 
+/* ---------- live mode ----------
+   When Spotify refuses to hand over playlist contents, we stop asking. We tell
+   the player to shuffle the playlist itself, then read back whatever it landed
+   on. Same game, the deck just reveals itself one card at a time. */
+function trackFromItem(it){
+  if(!it || !it.id) return null;
+  return {
+    id:it.id, uri:it.uri, name:it.name,
+    artists:(it.artists||[]).map(a=>a.name),
+    album:it.album?.name || '',
+    art:it.album?.images?.[0]?.url || '',
+    spYear:parseInt((it.album?.release_date||'').slice(0,4),10) || null
+  };
+}
+
+async function liveAdvance(){
+  const dev = S.deviceId || S.connectDevice;
+  const q = dev ? '?device_id=' + encodeURIComponent(dev) : '';
+  const prev = S.deck[S.idx]?.id || null;
+
+  if(S.idx < 0){
+    try{ await api(`/me/player/shuffle?state=true${dev ? '&device_id='+encodeURIComponent(dev) : ''}`, {method:'PUT'}); }catch(e){}
+    await api(`/me/player/play${q}`, {
+      method:'PUT', body: JSON.stringify({ context_uri: `spotify:playlist:${S.livePlaylist}` })
+    });
+  } else {
+    await api(`/me/player/next${q}`, {method:'POST'});
+  }
+
+  for(let i=0;i<14;i++){
+    await sleep(550);
+    let st = null;
+    try{ st = await api('/me/player/currently-playing'); }catch(e){}
+    const t = trackFromItem(st?.item);
+    if(t && t.id !== prev){ S.playing = st.is_playing !== false; return t; }
+  }
+  return null;
+}
+
 async function playTrack(uri){
   const dev = S.deviceId || S.connectDevice;
   if(!dev) throw new Error('No playback device available');
@@ -894,10 +946,11 @@ async function screenApiReport(){
     line('Playlist items +param', await probe(`/playlists/${first}/items?limit=1&additional_types=track`));
     line('Playlist tracks (old path)', await probe(`/playlists/${first}/tracks?limit=1`));
     const det = await probe(`/playlists/${first}`);
-    rows.push(['Songs inside details', det.ok
-      ? `${det.body?.tracks?.items?.length ?? 0} of ${det.body?.tracks?.total ?? '?'}`
-      : `${det.status} ${det.msg}`]);
+    const emb = det.ok ? embeddedTracks(det.body) : null;
+    rows.push(['Songs inside details', det.ok ? `${emb.list.length} of ${emb.total || '?'}` : `${det.status} ${det.msg}`]);
+    if(det.ok) rows.push(['Details fields', Object.keys(det.body||{}).slice(0,10).join(', ') || 'none']);
   }
+  line('Currently playing', await probe('/me/player/currently-playing'));
   if(S.chosen.has('__liked__')) line('Liked songs', await probe('/me/tracks?limit=1'));
   line('Playback devices', await probe('/me/player/devices'));
 
@@ -907,7 +960,10 @@ async function screenApiReport(){
     : 'Screenshot this and send it to Claude.';
 
   const v = el(`<div class="wrap">
-    <h2 style="margin-bottom:12px">Spotify check</h2>
+    <div class="spread" style="margin-bottom:12px">
+      <h2 style="margin:0">Spotify check</h2>
+      <span class="small">${esc(BUILD)}</span>
+    </div>
     <div class="card">
       ${rows.map(([k,val])=>`<div class="setrow"><div class="k">${esc(k)}</div>
         <div style="font-size:12.5px;text-align:right;max-width:58%;color:${/^OK$/.test(val)?'#8df5be':'#ff8098'}">${esc(val)}</div></div>`).join('')}
@@ -929,11 +985,18 @@ async function screenApiReport(){
 async function startGame(skipPlayerInit){
   screenLoading('Shuffling the deck');
   try{
-    if(!S.deck.length){
+    if(!S.deck.length && !S.live){
       S.deck = await buildDeck();
-      if(S.deck.length < 2) return screenPlaylists();
+      if(S.deck.length < 2) throw new Error('Not enough songs in those playlists.');
     }
-  }catch(e){ return screenDeckError(e); }
+  }catch(e){
+    // Spotify won't hand over the songs. Drive its player instead.
+    const pl = [...S.chosen].find(id => id !== '__liked__');
+    if(!pl) return screenDeckError(e);
+    S.live = true; S.livePlaylist = pl; S.deck = []; S.idx = -1;
+    S.capNote = 'Live mode: Spotify blocks this app from reading playlists, so the game is shuffling your playlist through the Spotify player and reading each song as it plays.'
+      + (S.chosen.size > 1 ? ' Only one of your chosen playlists is used in this mode.' : '');
+  }
 
   if(!skipPlayerInit && !S.deviceId && !S.connectDevice){
     screenLoading(IS_MOBILE ? 'Looking for a speaker' : 'Waking up the player');
@@ -949,24 +1012,37 @@ async function startGame(skipPlayerInit){
 
 async function nextSong(){
   if(S.busy) return;
-  if(S.idx+1 >= S.deck.length) return screenEnd(true);
+  if(!S.live && S.idx+1 >= S.deck.length) return screenEnd(true);
   S.busy = true;
-  S.idx++; S.revealed = false;
+  S.revealed = false;
   S.pick = {tier:null, artist:false, song:false, album:false};
-  const t = S.deck[S.idx];
-  drawGame();
-  try{ await playTrack(t.uri); }
-  catch(e){
+
+  try{
+    if(S.live){
+      if(S.idx >= 0) screenLoading('Cueing the next song');
+      const t = await liveAdvance();
+      if(!t){ S.busy = false; return drawGame('Spotify did not report a new song. Tap skip to try again.'); }
+      S.deck.push(t);
+      S.idx = S.deck.length - 1;
+    } else {
+      S.idx++;
+      drawGame();
+      await playTrack(S.deck[S.idx].uri);
+    }
+  }catch(e){
     S.busy = false;
     if(e.status===404 || /device/i.test(e.message||'')) return screenDevices('Lost contact with the player.');
     if(e.reason==='PREMIUM_REQUIRED') return screenDevices('That account needs Spotify Premium for in-browser playback.');
-    drawGame('Could not start that track. Try Skip.');
+    if(S.live && S.idx < 0) return screenDevices('Could not start that playlist. Pick where to play it.');
+    drawGame('Could not start that track. Try skip.');
     return;
   }
+
   S.busy = false;
   drawGame();
+  const t = S.deck[S.idx];
   originalYear(t);                                     // warm this song's year
-  if(S.deck[S.idx+1]) originalYear(S.deck[S.idx+1]);   // and pre-warm the next
+  if(!S.live && S.deck[S.idx+1]) originalYear(S.deck[S.idx+1]);
 }
 
 function scoreStrip(){
