@@ -265,14 +265,14 @@ const SCOPES = [
 // Normalise so /index.html and / register as the same redirect URI in Spotify.
 const REDIRECT = location.origin + location.pathname.replace(/index\.html$/i, '');
 const IS_MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
-const BUILD = 'build 10';   // bump on every release so we can tell versions apart
+const BUILD = 'build 11';   // bump on every release so we can tell versions apart
 const COLORS = ['#ff2d95','#00e5ff','#ffd23f','#22e07a','#8b5cf6','#ff8a3d'];
 
 /* ---------- app state ---------- */
 const S = {
   token:null, refresh:null, expires:0, me:null,
   playlists:[], chosen:new Set(),
-  deck:[], idx:-1, live:false, livePlaylist:null,
+  deck:[], idx:-1, live:false, livePlaylist:null, baseline:null,
   players:[], turn:0, rules:{...DEFAULT_RULES},
   revealed:false, playing:false,
   pick:{tier:null, artist:false, song:false, album:false}, capNote:'', cued:false,
@@ -513,17 +513,25 @@ async function screenPlaylists(){
   };
   S.playlists.forEach(p => {
     const img = p.images?.[0]?.url;
+    // Spotify no longer reports track totals to development apps, so only show
+    // a count when there genuinely is one. Never print "0 tracks".
+    const total = p.tracks?.total;
+    const meta = p.liked ? 'Your saved songs'
+      : (Number.isFinite(total) && total > 0)
+        ? `${total} tracks${p.owner?.display_name ? ' · '+p.owner.display_name : ''}`
+        : (p.owner?.display_name || '');
     const row = el(`<button class="pl${S.chosen.has(p.id)?' on':''}">
       ${img?`<img src="${esc(img)}" alt="" loading="lazy">`:`<div class="ph"></div>`}
       <div class="grow">
         <div class="nm">${esc(p.name)}</div>
-        <div class="ct">${p.liked?'Your saved songs':esc((p.tracks?.total ?? 0)+' tracks'+(p.owner?.display_name?' · '+p.owner.display_name:''))}</div>
+        ${meta?`<div class="ct">${esc(meta)}</div>`:''}
       </div>
       <div class="tick">${S.chosen.has(p.id)?'✓':''}</div>
     </button>`);
     row.onclick = () => {
       if(S.chosen.has(p.id)){ S.chosen.delete(p.id); row.classList.remove('on'); row.querySelector('.tick').textContent=''; }
       else { S.chosen.add(p.id); row.classList.add('on'); row.querySelector('.tick').textContent='✓'; }
+      resetRound();          // a different pick means a different playlist to drive
       sync();
     };
     list.appendChild(row);
@@ -620,7 +628,7 @@ function screenPlayers(){
     S.players.push({name:'Player '+(S.players.length+1), score:0, color:COLORS[S.players.length%COLORS.length]});
     draw();
   };
-  v.querySelector('#back').onclick = () => { S.deck=[]; screenPlaylists(); };
+  v.querySelector('#back').onclick = () => { resetRound(); screenPlaylists(); };
   v.querySelector('#start').onclick = () => {
     S.players.forEach(p => { p.name = (p.name||'').trim() || 'Player'; p.score = 0; });
     store.set(K.PLAYERS, JSON.stringify(S.players.map(p=>({name:p.name}))));
@@ -628,6 +636,12 @@ function screenPlayers(){
     startGame();
   };
   render(v);
+}
+
+/* Wipe anything tied to the previous round so a new playlist really is new. */
+function resetRound(){
+  S.deck = []; S.idx = -1; S.live = false; S.livePlaylist = null;
+  S.baseline = null; S.cued = false; S.playing = false; S.capNote = '';
 }
 
 /* ============================================================
@@ -721,12 +735,21 @@ async function originalYear(track){
   const fallback = { year: track.spYear, source:'spotify', spYear: track.spYear };
   let out = fallback;
   try{
-    const q = `recording:"${track.name.replace(/"/g,'')}" AND artist:"${(track.artists[0]||'').replace(/"/g,'')}"`;
+    // Spotify titles carry baggage: "Let It Be - Remastered 2009",
+    // "Song - Live", "Track (feat. X)". MusicBrainz stores the plain title,
+    // so strip the decoration before matching or nothing ever matches.
+    const clean = s => (s||'').toLowerCase()
+      .replace(/\(.*?\)|\[.*?\]/g,'')
+      .replace(/\s[-–]\s.*?(remaster|remastered|live|mono|stereo|version|edit|mix|deluxe|anniversar|bonus|radio|single|re-?record|take\s*\d+).*$/,'')
+      .replace(/\s(feat|ft)\.?\s.*$/,'')
+      .replace(/\s+/g,' ').trim();
+    const title = clean(track.name) || track.name;
+    const q = `recording:"${title.replace(/"/g,'')}" AND artist:"${(track.artists[0]||'').replace(/"/g,'')}"`;
     const url = 'https://musicbrainz.org/ws/2/recording?fmt=json&limit=8&query=' + encodeURIComponent(q);
     const res = await mbThrottled(() => fetch(url, {headers:{Accept:'application/json'}}));
     if(res.ok){
       const j = await res.json();
-      const norm = s => (s||'').toLowerCase().replace(/\(.*?\)|\[.*?\]/g,'').replace(/[^a-z0-9]/g,'').trim();
+      const norm = s => clean(s).replace(/[^a-z0-9]/g,'');
       const want = norm(track.name), wantA = norm(track.artists[0]);
       let best = null;
       for(const r of (j.recordings||[])){
@@ -836,32 +859,75 @@ async function nowPlaying(){
   let st = null;
   try{ st = await api('/me/player'); }catch(e){}
   if(!st || !st.item){ try{ st = await api('/me/player/currently-playing'); }catch(e){} }
-  return { track: trackFromItem(st?.item), playing: !!(st && st.is_playing) };
+  return {
+    track: trackFromItem(st?.item),
+    playing: !!(st && st.is_playing),
+    context: st?.context?.uri || null
+  };
 }
 
 async function liveAdvance(){
+  const wantCtx = `spotify:playlist:${S.livePlaylist}`;
+  const seen = new Set(S.deck.map(d => d.id));
   const prev = S.deck[S.idx]?.id || null;
 
   if(S.idx < 0){
+    // Remember whatever the phone was already playing, so we never mistake it
+    // for the first card.
+    const before = await nowPlaying();
+    S.baseline = before.track?.id || null;
+
+    // Spotify's shuffle keeps dealing the same opening hand, so start from a
+    // random position in the playlist. We can't read the length any more, so
+    // aim high and shrink until it's accepted.
+    let pos = Math.floor(Math.random() * 250), placed = false;
+    for(let tries=0; tries<5 && pos > 0; tries++){
+      try{
+        await playerCall('/me/player/play', {
+          method:'PUT', body: JSON.stringify({context_uri: wantCtx, offset:{position: pos}})
+        });
+        placed = true; break;
+      }catch(e){ pos = Math.floor(pos / 3); }
+    }
+    if(!placed) await playerCall('/me/player/play', {method:'PUT', body: JSON.stringify({context_uri: wantCtx})});
+
+    try{ await playerCall('/me/player/pause', {method:'PUT'}); }catch(e){}      // keep it quiet while we set up
     try{ await playerCall('/me/player/shuffle?state=true', {method:'PUT'}); }catch(e){}
-    await playerCall('/me/player/play', {
-      method:'PUT', body: JSON.stringify({ context_uri: `spotify:playlist:${S.livePlaylist}` })
-    });
+
+    const jumps = 1 + Math.floor(Math.random() * 6);
+    for(let i=0;i<jumps;i++){
+      try{ await playerCall('/me/player/next', {method:'POST'}); }catch(e){ break; }
+    }
   } else {
     await playerCall('/me/player/next', {method:'POST'});
   }
 
-  // Wait until Spotify has genuinely moved to a different track. Pausing
-  // before the switch lands is what let songs start on their own.
-  let found = null;
-  for(let i=0;i<16;i++){
-    await sleep(500);
-    const {track} = await nowPlaying();
-    if(track && track.id !== prev){ found = track; break; }
+  const stale = new Set([prev, S.baseline].filter(Boolean));
+  let found = null, reasserted = false;
+
+  for(let round=0; round<3 && !found; round++){
+    for(let i=0;i<14;i++){
+      await sleep(450);
+      const np = await nowPlaying();
+
+      // Playing from somewhere else entirely — usually the playlist from the
+      // last game, still queued on the phone. Force our context back on.
+      if(np.context && np.context !== wantCtx){
+        if(!reasserted && i > 3){
+          reasserted = true;
+          try{ await playerCall('/me/player/play', {method:'PUT', body: JSON.stringify({context_uri: wantCtx})}); }catch(e){}
+          try{ await playerCall('/me/player/pause', {method:'PUT'}); }catch(e){}
+        }
+        continue;
+      }
+      const t = np.track;
+      if(t && !stale.has(t.id) && !seen.has(t.id)){ found = t; break; }
+    }
+    if(!found && round < 2){ try{ await playerCall('/me/player/next', {method:'POST'}); }catch(e){} }
   }
   if(!found) return null;
 
-  // Now silence it, and confirm it actually stopped.
+  // Silence it and rewind, confirming it really stopped.
   for(let i=0;i<3;i++){
     try{ await playerCall('/me/player/pause', {method:'PUT'}); }catch(e){}
     await sleep(400);
@@ -986,7 +1052,7 @@ function screenDeckError(err){
     </div>
   </div>`);
   v.querySelector('#run').onclick = screenApiReport;
-  v.querySelector('#back').onclick = () => { S.deck=[]; screenPlaylists(); };
+  v.querySelector('#back').onclick = () => { resetRound(); screenPlaylists(); };
   render(v);
 }
 
@@ -1036,7 +1102,7 @@ async function screenApiReport(){
       <button class="btn btn-ghost btn-sm" id="out" style="margin:0 auto">Sign out and switch account</button>
     </div>
   </div>`);
-  v.querySelector('#back').onclick = () => { S.deck=[]; screenPlaylists(); };
+  v.querySelector('#back').onclick = () => { resetRound(); screenPlaylists(); };
   v.querySelector('#out').onclick = logout;
   render(v);
 }
@@ -1046,6 +1112,11 @@ async function screenApiReport(){
    ============================================================ */
 async function startGame(skipPlayerInit){
   screenLoading('Shuffling the deck');
+  // Always point live mode at whatever is selected right now, not last round's.
+  if(S.live){
+    const pick = [...S.chosen].find(id => id !== '__liked__');
+    if(pick && pick !== S.livePlaylist){ S.livePlaylist = pick; S.deck = []; S.idx = -1; }
+  }
   try{
     if(!S.deck.length && !S.live){
       S.deck = await buildDeck();
@@ -1129,7 +1200,7 @@ function screenStuck(msg){
   </div>`);
   v.querySelector('#retry').onclick = () => { S.busy = false; nextSong(); };
   v.querySelector('#dev').onclick = () => screenDevices('Pick where the music should come out.');
-  v.querySelector('#back').onclick = () => { S.deck=[]; S.idx=-1; S.live=false; screenPlaylists(); };
+  v.querySelector('#back').onclick = () => { resetRound(); screenPlaylists(); };
   render(v);
 }
 
@@ -1283,10 +1354,11 @@ function screenEnd(outOfSongs){
   </div>`);
   v.querySelector('#again').onclick = () => {
     S.players.forEach(p=>p.score=0); S.turn=0;
-    for(let i=S.deck.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [S.deck[i],S.deck[j]]=[S.deck[j],S.deck[i]]; }
+    if(S.live){ S.deck=[]; S.idx=-1; S.baseline=null; }   // live mode re-shuffles from scratch
+    else for(let i=S.deck.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [S.deck[i],S.deck[j]]=[S.deck[j],S.deck[i]]; }
     startGame(true);
   };
-  v.querySelector('#pl').onclick = () => { S.deck=[]; S.chosen.clear(); screenPlaylists(); };
+  v.querySelector('#pl').onclick = () => { resetRound(); S.chosen.clear(); screenPlaylists(); };
   render(v);
 }
 
