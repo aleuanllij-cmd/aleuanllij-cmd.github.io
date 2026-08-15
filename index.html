@@ -265,14 +265,14 @@ const SCOPES = [
 // Normalise so /index.html and / register as the same redirect URI in Spotify.
 const REDIRECT = location.origin + location.pathname.replace(/index\.html$/i, '');
 const IS_MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
-const BUILD = 'build 11';   // bump on every release so we can tell versions apart
+const BUILD = 'build 12';   // bump on every release so we can tell versions apart
 const COLORS = ['#ff2d95','#00e5ff','#ffd23f','#22e07a','#8b5cf6','#ff8a3d'];
 
 /* ---------- app state ---------- */
 const S = {
   token:null, refresh:null, expires:0, me:null,
   playlists:[], chosen:new Set(),
-  deck:[], idx:-1, live:false, livePlaylist:null, baseline:null,
+  deck:[], idx:-1, live:false, livePlaylist:null, baseline:null, savedVolume:null,
   players:[], turn:0, rules:{...DEFAULT_RULES},
   revealed:false, playing:false,
   pick:{tier:null, artist:false, song:false, album:false}, capNote:'', cued:false,
@@ -839,7 +839,7 @@ async function transferToDevice(){
   if(!dev) return false;
   try{
     await api('/me/player', {method:'PUT', body: JSON.stringify({device_ids:[dev], play:false})});
-    await sleep(700);
+    await sleep(1100);
     return true;
   }catch(e){ return false; }
 }
@@ -859,83 +859,113 @@ async function nowPlaying(){
   let st = null;
   try{ st = await api('/me/player'); }catch(e){}
   if(!st || !st.item){ try{ st = await api('/me/player/currently-playing'); }catch(e){} }
+  const d = st?.device;
   return {
     track: trackFromItem(st?.item),
     playing: !!(st && st.is_playing),
-    context: st?.context?.uri || null
+    context: st?.context?.uri || null,
+    volume: (d && d.supports_volume !== false && typeof d.volume_percent === 'number') ? d.volume_percent : null
   };
+}
+
+async function setVolume(pct){
+  try{ await playerCall('/me/player/volume?volume_percent=' + Math.max(0, Math.min(100, Math.round(pct))), {method:'PUT'}); return true; }
+  catch(e){ return false; }
+}
+
+async function quiet(){                       // pause, and mean it
+  for(let i=0;i<4;i++){
+    try{ await playerCall('/me/player/pause', {method:'PUT'}); }catch(e){}
+    await sleep(320);
+    if(!(await nowPlaying()).playing) return true;
+  }
+  return false;
 }
 
 async function liveAdvance(){
   const wantCtx = `spotify:playlist:${S.livePlaylist}`;
   const seen = new Set(S.deck.map(d => d.id));
   const prev = S.deck[S.idx]?.id || null;
-
-  if(S.idx < 0){
-    // Remember whatever the phone was already playing, so we never mistake it
-    // for the first card.
-    const before = await nowPlaying();
-    S.baseline = before.track?.id || null;
-
-    // Spotify's shuffle keeps dealing the same opening hand, so start from a
-    // random position in the playlist. We can't read the length any more, so
-    // aim high and shrink until it's accepted.
-    let pos = Math.floor(Math.random() * 250), placed = false;
-    for(let tries=0; tries<5 && pos > 0; tries++){
-      try{
-        await playerCall('/me/player/play', {
-          method:'PUT', body: JSON.stringify({context_uri: wantCtx, offset:{position: pos}})
-        });
-        placed = true; break;
-      }catch(e){ pos = Math.floor(pos / 3); }
-    }
-    if(!placed) await playerCall('/me/player/play', {method:'PUT', body: JSON.stringify({context_uri: wantCtx})});
-
-    try{ await playerCall('/me/player/pause', {method:'PUT'}); }catch(e){}      // keep it quiet while we set up
-    try{ await playerCall('/me/player/shuffle?state=true', {method:'PUT'}); }catch(e){}
-
-    const jumps = 1 + Math.floor(Math.random() * 6);
-    for(let i=0;i<jumps;i++){
-      try{ await playerCall('/me/player/next', {method:'POST'}); }catch(e){ break; }
-    }
-  } else {
-    await playerCall('/me/player/next', {method:'POST'});
-  }
-
   const stale = new Set([prev, S.baseline].filter(Boolean));
-  let found = null, reasserted = false;
 
-  for(let round=0; round<3 && !found; round++){
-    for(let i=0;i<14;i++){
-      await sleep(450);
-      const np = await nowPlaying();
+  // If a previous run died mid-setup, give the volume back before anything else.
+  if(S.savedVolume != null){ await setVolume(S.savedVolume); S.savedVolume = null; }
 
-      // Playing from somewhere else entirely — usually the playlist from the
-      // last game, still queued on the phone. Force our context back on.
-      if(np.context && np.context !== wantCtx){
-        if(!reasserted && i > 3){
-          reasserted = true;
-          try{ await playerCall('/me/player/play', {method:'PUT', body: JSON.stringify({context_uri: wantCtx})}); }catch(e){}
-          try{ await playerCall('/me/player/pause', {method:'PUT'}); }catch(e){}
-        }
-        continue;
+  const before = await nowPlaying();
+  if(S.idx < 0) S.baseline = before.track?.id || null;
+
+  // Skipping around is audible. Mute for the shuffle, restore afterwards.
+  const vol = before.volume;
+  if(vol != null){ S.savedVolume = vol; await setVolume(0); }
+
+  try{
+    if(S.idx < 0){
+      // Start somewhere random rather than at the top. We can't read the
+      // playlist length any more, so aim high and shrink until accepted.
+      let pos = Math.floor(Math.random() * 250), placed = false;
+      for(let tries=0; tries<5 && pos > 0; tries++){
+        try{
+          await playerCall('/me/player/play', {
+            method:'PUT', body: JSON.stringify({context_uri: wantCtx, offset:{position: pos}})
+          });
+          placed = true; break;
+        }catch(e){ pos = Math.floor(pos / 3); }
       }
-      const t = np.track;
-      if(t && !stale.has(t.id) && !seen.has(t.id)){ found = t; break; }
+      if(!placed) await playerCall('/me/player/play', {method:'PUT', body: JSON.stringify({context_uri: wantCtx})});
+      try{ await playerCall('/me/player/shuffle?state=true', {method:'PUT'}); }catch(e){}
+      const jumps = 1 + Math.floor(Math.random() * 6);
+      for(let i=0;i<jumps;i++){
+        try{ await playerCall('/me/player/next', {method:'POST'}); }catch(e){ break; }
+      }
+    } else {
+      try{ await playerCall('/me/player/next', {method:'POST'}); }
+      catch(e){
+        // Device dozed off between turns. Wake it with the playlist, then skip.
+        await playerCall('/me/player/play', {method:'PUT', body: JSON.stringify({context_uri: wantCtx})});
+        try{ await playerCall('/me/player/next', {method:'POST'}); }catch(_){}
+      }
     }
-    if(!found && round < 2){ try{ await playerCall('/me/player/next', {method:'POST'}); }catch(e){} }
-  }
-  if(!found) return null;
 
-  // Silence it and rewind, confirming it really stopped.
-  for(let i=0;i<3;i++){
-    try{ await playerCall('/me/player/pause', {method:'PUT'}); }catch(e){}
-    await sleep(400);
-    if(!(await nowPlaying()).playing) break;
+    // Stop the player BEFORE deciding what the card is. Reading mid-skip is
+    // what let the card and the audio disagree.
+    await quiet();
+
+    let found = null, reasserted = false;
+    for(let round=0; round<2 && !found; round++){
+      let last = null, stable = 0;
+      for(let i=0;i<20;i++){
+        await sleep(380);
+        const np = await nowPlaying();
+        if(np.playing){ try{ await playerCall('/me/player/pause', {method:'PUT'}); }catch(e){} }
+
+        // Someone else's context — usually last game's playlist still queued.
+        if(np.context && np.context !== wantCtx){
+          if(!reasserted && i > 3){
+            reasserted = true;
+            try{ await playerCall('/me/player/play', {method:'PUT', body: JSON.stringify({context_uri: wantCtx})}); }catch(e){}
+            await quiet();
+          }
+          continue;
+        }
+
+        const t = np.track;
+        if(!t) continue;
+        if(t.id === last) stable++; else { last = t.id; stable = 0; }
+        // Only accept a track Spotify has reported twice running: it has settled.
+        if(stable >= 1 && !stale.has(t.id) && !seen.has(t.id)){ found = t; break; }
+      }
+      if(!found && round < 1){
+        try{ await playerCall('/me/player/next', {method:'POST'}); }catch(e){}
+        await quiet();
+      }
+    }
+
+    if(found){ try{ await playerCall('/me/player/seek?position_ms=0', {method:'PUT'}); }catch(e){} }
+    S.playing = false;
+    return found;
+  } finally {
+    if(S.savedVolume != null){ await setVolume(S.savedVolume); S.savedVolume = null; }
   }
-  try{ await playerCall('/me/player/seek?position_ms=0', {method:'PUT'}); }catch(e){}
-  S.playing = false;
-  return found;
 }
 
 async function playTrack(uri){
@@ -1165,9 +1195,11 @@ async function nextSong(){
     }
   }catch(e){
     S.busy = false;
-    if(e.status===404 || /device/i.test(e.message||'')) return screenDevices('Lost contact with the player.');
     if(e.reason==='PREMIUM_REQUIRED') return screenDevices('That account needs Spotify Premium for in-browser playback.');
+    // In live mode a 404 usually just means the phone dozed off — offer a retry
+    // rather than throwing the whole device picker at them.
     if(S.live) return screenStuck(e.message || 'Spotify refused the command.');
+    if(e.status===404 || /device/i.test(e.message||'')) return screenDevices('Lost contact with the player.');
     drawGame('Could not start that track. Try skip.');
     return;
   }
